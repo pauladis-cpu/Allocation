@@ -3,37 +3,46 @@
 <head>
 <meta charset="utf-8">
 <style>
-  :root { --fg:#1f2430; --mut:#8a90a0; --bd:#d9dce3; --sel:#1b6ef3; --selfg:#fff; --today:#f5a623; --dis:#c4c8d2; --bg:transparent; }
-  @media (prefers-color-scheme: dark) { :root { --fg:#e6e8ee; --mut:#9aa0b0; --bd:#3a3f4d; --dis:#555a68; } }
-  body { margin:0; font-family: "Source Sans Pro", system-ui, sans-serif; color:var(--fg); background:var(--bg); user-select:none; }
-  .nav { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .nav button { border:1px solid var(--bd); background:transparent; color:var(--fg); border-radius:6px; padding:2px 10px; cursor:pointer; font-size:14px; }
-  .nav .hint { color:var(--mut); font-size:12px; margin-left:auto; }
-  .meses { display:flex; flex-wrap:wrap; gap:16px; }
-  .mes { width:196px; }
-  .mes h4 { margin:0 0 4px; font-size:14px; text-align:center; text-transform:capitalize; }
-  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
-  .dow { font-size:11px; color:var(--mut); text-align:center; }
-  .d { height:26px; line-height:26px; text-align:center; font-size:13px; border-radius:5px; cursor:pointer; }
-  .d:hover:not(.dis):not(.sel) { background:rgba(27,110,243,.15); }
-  .d.hoy { outline:2px solid var(--today); outline-offset:-2px; }
-  .d.sel { background:var(--sel); color:var(--selfg); }
-  .d.dis { color:var(--dis); cursor:default; }
-  .d.vacio { cursor:default; }
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&display=swap');
+  :root { --fg:#1c2330; --mut:#7a8190; --bd:#dfe3e8; --acc:#1d5bbf; --dis:#c3c8d1; --hoy:#f5a623; --tarde:#e08a00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"IBM Plex Sans", system-ui, sans-serif; color:var(--fg); background:transparent; user-select:none; }
+  .nav { display:flex; justify-content:flex-end; gap:6px; margin-bottom:4px; }
+  .nav button { border:1px solid var(--bd); background:#fff; color:var(--fg); border-radius:8px; padding:2px 12px; cursor:pointer; font-size:14px; }
+  .nav button:disabled { opacity:.35; cursor:default; }
+  .meses { display:flex; flex-wrap:wrap; gap:20px; }
+  .mes { flex:1 1 0; min-width:190px; }
+  .mes h4 { margin:0 0 6px; font-size:16px; font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .dow { font-size:12px; color:var(--mut); text-align:center; padding:2px 0; }
+  .d { position:relative; aspect-ratio:1/1; max-height:34px; display:flex; align-items:center; justify-content:center;
+       font-size:14px; border:1px solid var(--bd); border-radius:7px; background:#fff; cursor:pointer; }
+  .d:hover:not(.dis):not(.sel) { background:#e8f0fc; }
+  .d.hoy { border-color:var(--hoy); }
+  .d.sel { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:700; }
+  .d.dis { color:var(--dis); background:#f6f7f9; cursor:default; }
+  .d.vacio { border:none; background:transparent; cursor:default; }
+  .d.tarde::after { content:""; position:absolute; right:3px; top:3px; width:6px; height:6px; border-radius:50%; background:var(--tarde); }
+  .leyenda { display:flex; flex-wrap:wrap; gap:18px; margin-top:12px; font-size:13px; color:var(--mut); align-items:center; }
+  .leyenda i { display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:-2px; margin-right:6px; border:1px solid var(--bd); background:#fff; }
+  .leyenda i.a { background:var(--acc); border-color:var(--acc); }
+  .leyenda i.p { background:#f6f7f9; }
+  .leyenda i.t { border-radius:50%; width:8px; height:8px; background:var(--tarde); border-color:var(--tarde); vertical-align:1px; }
 </style>
 </head>
 <body>
-<div class="nav">
-  <button id="prev" title="Meses anteriores">&#9664;</button>
-  <button id="next" title="Meses siguientes">&#9654;</button>
-  <span class="hint">Clic: marca/desmarca un día · Shift+clic: rango desde el último clic</span>
-</div>
+<div class="nav"><button id="prev" title="Meses anteriores">&#9664;</button><button id="next" title="Meses siguientes">&#9654;</button></div>
 <div class="meses" id="meses"></div>
+<div class="leyenda">
+  <span><i class="a"></i>A cerrar</span><span><i></i>Sin marcar</span><span><i class="p"></i>Fecha pasada (se descarta)</span>
+  <span id="lt" style="display:none"><i class="t"></i>Posterior a «Vigente hasta»</span>
+  <span>Shift + click marca un rango</span>
+</div>
 <script>
   const NMESES = 3;
-  const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const DOW = ["L","M","M","J","V","S","D"];
-  let hoy = null, tope = null, sel = new Set(), anchor = null, vistaAnio = null, vistaMes = null;
+  let hoy = null, tope = null, sel = new Set(), tarde = new Set(), anchor = null, vistaAnio = null, vistaMes = null;
 
   const iso = (y,m,d) => y + "-" + String(m+1).padStart(2,"0") + "-" + String(d).padStart(2,"0");
   const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
@@ -60,6 +69,12 @@
     dibujar(); emitir();
   }
 
+  // Navegación acotada: del mes de hoy al mes de hoy + 2 años
+  function limites() {
+    const h = parse(hoy), t = parse(tope);
+    return {min: h.getFullYear()*12 + h.getMonth(), max: t.getFullYear()*12 + t.getMonth()};
+  }
+
   function dibujar() {
     const cont = document.getElementById("meses");
     cont.innerHTML = "";
@@ -76,19 +91,26 @@
       for (let d = 1; d <= ndias; d++) {
         const s = iso(y, m, d);
         const e = document.createElement("div");
-        e.className = "d" + (habilitado(s) ? "" : " dis") + (sel.has(s) ? " sel" : "") + (s === hoy ? " hoy" : "");
+        e.className = "d" + (habilitado(s) ? "" : " dis") + (sel.has(s) ? " sel" : "") + (s === hoy ? " hoy" : "")
+                    + (tarde.has(s) && sel.has(s) ? " tarde" : "");
         e.textContent = d;
         e.addEventListener("click", ev => clic(s, ev.shiftKey));
         g.appendChild(e);
       }
       mes.appendChild(g); cont.appendChild(mes);
     }
+    const L = limites(), actual = vistaAnio*12 + vistaMes;
+    document.getElementById("prev").disabled = actual <= L.min;
+    document.getElementById("next").disabled = actual + NMESES > L.max;
+    document.getElementById("lt").style.display = tarde.size ? "" : "none";
     send("streamlit:setFrameHeight", {height: document.body.scrollHeight + 8});
   }
 
   function mover(delta) {
-    const b = new Date(vistaAnio, vistaMes + delta, 1);
-    vistaAnio = b.getFullYear(); vistaMes = b.getMonth(); dibujar();
+    const L = limites();
+    let destino = vistaAnio*12 + vistaMes + delta;
+    destino = Math.max(L.min, Math.min(destino, Math.max(L.min, L.max - NMESES + 1)));
+    vistaAnio = Math.floor(destino/12); vistaMes = destino % 12; dibujar();
   }
   document.getElementById("prev").addEventListener("click", () => mover(-NMESES));
   document.getElementById("next").addEventListener("click", () => mover(NMESES));
@@ -99,6 +121,7 @@
     const primera = hoy === null;
     hoy = a.hoy; tope = a.tope;
     sel = new Set(a.seleccion || []);
+    tarde = new Set(a.tarde || []);
     if (primera) {
       const h = parse(hoy); vistaAnio = h.getFullYear(); vistaMes = h.getMonth();
     }

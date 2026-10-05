@@ -41,7 +41,7 @@ streamlit run app.py --server.address=localhost
 
 `actualizar_app.bat` hace `git pull` (requiere que la carpeta sea un clon de git).
 
-## Primera vez en cada PC (⚙️ Configuración)
+## Primera vez en cada PC (Configuración: clic en tu nombre, arriba a la derecha)
 
 La configuración vive en `~/.tourplan-allocation/` (fuera del repo, nunca se sube):
 
@@ -66,7 +66,9 @@ La columna `Hotel` de COLA es una fórmula del Sheet: la app nunca la escribe.
 ## Estructura
 
 ```
-app.py                  Interfaz Streamlit: Buscar hotel / Fechas y alcance / Revisar y enviar / Cola / Configuración
+app.py                  Interfaz Streamlit: barra superior (Nuevo pedido / Cola / usuario), flujo de 3 pasos
+                        (Hotel / Fechas y alcance / Revisar y enviar) y Cola; Configuración en un diálogo
+.streamlit/config.toml  Tema (colores y tipografía) de la interfaz
 components/calendario/  Calendario de varios meses (clic y shift+clic) como componente Streamlit
 allocation/
   constantes.py         Reglas de negocio y constantes en un solo lugar
@@ -94,7 +96,7 @@ tests/                  Pruebas unitarias de la lógica pura y de la escritura e
 
 ## Etapa 2: cómo probar contra Tourplan de prueba
 
-1. En ⚙️ Configuración: usuario/password de Test, entorno `test`, tu nombre.
+1. En la Configuración (tu nombre, arriba a la derecha): usuario/password de Test, entorno `test`, tu nombre.
 2. Cargá en Test un hotel del registro (ej. `6RABA1` con su allocation `Standard` /
    `Standard CIERRA DATABASE` y la habitación `BUEHT6RABA1ST`).
 3. Enviá un pedido en modo lectura a la cola y, en la pestaña Cola, «Leer plan (lectura)».
