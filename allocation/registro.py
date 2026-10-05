@@ -171,3 +171,20 @@ def cargar_registro(ws):
         raise RegistroInvalido(f"La hoja {HOJA_ALLOCATIONS} está vacía.")
     allocs = construir_allocations(filas, columnas)
     return allocs, agrupar_hoteles(allocs)
+
+
+def resolver_allocations(texto_cola, hotel_allocs):
+    """Allocations del registro a las que apunta el pedido ("TODAS" o códigos
+    separados por ";"). Devuelve (encontradas, faltantes). Coincide por código
+    normalizado; si un código falta en el registro se informa, no se ignora."""
+    texto = (texto_cola or "").strip()
+    if normalizar(texto) == "todas":
+        return list(hotel_allocs), []
+    por_codigo = {normalizar(a.codigo): a for a in hotel_allocs}
+    encontradas, faltantes = [], []
+    for cod in (c.strip() for c in texto.split(";")):
+        if not cod:
+            continue
+        a = por_codigo.get(normalizar(cod))
+        (encontradas if a else faltantes).append(a or cod)
+    return encontradas, faltantes

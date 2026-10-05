@@ -8,16 +8,23 @@ Pantallas: 1 Buscar hotel · 2 Fechas y alcance · 3 Revisar y enviar · 4 Cola.
 La configuración (credenciales de Tourplan, URL del Sheet, entorno) se guarda
 por PC en ~/.tourplan-allocation (ver common/user_config.py).
 """
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+import time
 from datetime import date
 from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
+from common.abort import ABORT_EXIT_CODE
 from allocation import cola, fechas as fch, registro
 from allocation.constantes import (
     ALLOCATIONS_TODAS, EXCLUDED_OPTIONS, HOJA_ALLOCATIONS, HOJA_COLA, MODO_APLICAR,
-    MODO_LECTURA, URLS_ENTORNO,
+    MODO_LECTURA, URLS_ENTORNO, URL_PRODUCCION,
 )
 from common import user_config
 from common.sheets_client import conectar_sheets
@@ -246,7 +253,11 @@ def render_fechas():
                         f"({fmt_fecha(a.vigente_hasta)}): en allocation no se tocan"
                         + ("; en tarifas sí se cierran." if a.cierra_tarifa else "."))
 
-    puede = bool(sel) and bool(elegidas)
+    puede = bool(sel) and bool(elegidas) and not _por_definir(elegidas)
+    if _por_definir(elegidas):
+        st.error("No se puede continuar: " + ", ".join(a.codigo for a in _por_definir(elegidas))
+                 + " cierra tarifa pero su alcance está en REVISAR (falta definir qué habitaciones). "
+                 "Completá «Tarifas a cerrar» en el registro y recargá.")
     if st.button("Continuar ➜", type="primary", disabled=not puede):
         _ir("revisar")
     if not puede:
@@ -254,6 +265,11 @@ def render_fechas():
 
 
 # ── Pantalla 3: revisar y enviar ──────────────────────────────────────────
+
+def _por_definir(elegidas):
+    """Allocations que cierran tarifa pero cuyo alcance sigue en REVISAR: no se pueden enviar."""
+    return [a for a in elegidas if a.cierra_tarifa and a.tarifas.strip().upper() == "REVISAR"]
+
 
 def _plan_texto(hotel, elegidas):
     """Qué va a hacer el script, en lenguaje llano."""
@@ -272,8 +288,6 @@ def _plan_texto(hotel, elegidas):
             t = a.tarifas.strip().upper()
             alcance.add("las habitaciones HT del hotel, excepto " + ", ".join(sorted(EXCLUDED_OPTIONS))
                         if t == "TODAS" else
-                        "⚠️ alcance por definir (REVISAR): no se cerrarán tarifas hasta completarlo en el registro"
-                        if t == "REVISAR" else
                         "la habitación linkeada" if t == "LINKEADA" else a.tarifas)
         lineas.append("**Tarifas**: cierra períodos en Rates (Manual/Closed y tarifa en 0) de: "
                       + " + ".join(sorted(alcance)) + ".")
@@ -314,10 +328,14 @@ def render_revisar():
     if not nombre:
         st.warning("Cargá tu nombre en ⚙️ Configuración para que figure en «Cargado por».")
 
+    por_definir = _por_definir(elegidas)
+    if por_definir:
+        st.error("No se puede enviar: " + ", ".join(a.codigo for a in por_definir)
+                 + " tiene el alcance de tarifas en REVISAR. Definilo en el registro y recargá.")
     col_a, col_b = st.columns(2)
     with col_a:
         enviar = st.button("Enviar a la cola", type="primary", use_container_width=True,
-                           disabled=not (revisado and nombre))
+                           disabled=not (revisado and nombre) or bool(por_definir))
     with col_b:
         st.button("Enviar y ejecutar", use_container_width=True, disabled=True,
                   help="Disponible en una etapa posterior (todavía no hay ejecución con Selenium).")
@@ -339,6 +357,14 @@ def render_revisar():
 
 # ── Pantalla 4: cola ──────────────────────────────────────────────────────
 
+def _nombre_hotel(codigo):
+    """Nombre del hotel según el registro (la hoja COLA ya no trae esa columna)."""
+    for h in st.session_state.get("registro", {}).get("hoteles", []):
+        if h.codigo and h.codigo.upper() == (codigo or "").upper():
+            return f"{h.nombre} ({codigo})"
+    return codigo
+
+
 def render_cola():
     st.subheader("Cola")
     if st.session_state.get("ultimo_envio"):
@@ -349,6 +375,8 @@ def render_cola():
     with col_e:
         st.button("Ejecutar pendientes", type="primary", use_container_width=True, disabled=True,
                   help="Disponible en una etapa posterior (todavía no hay ejecución con Selenium).")
+    render_lectura_tourplan()
+    st.divider()
     if refrescar or "cola_datos" not in st.session_state:
         try:
             with st.spinner("Leyendo la cola..."):
@@ -372,13 +400,92 @@ def render_cola():
         c.metric(k, n)
     st.dataframe([{
         "Pedido": p["id"], "Cargado": p["cargado"], "Por": p["cargado_por"],
-        "Hotel": p["hotel"] or p["hotel_codigo"], "Allocations": p["allocations"],
+        "Hotel": _nombre_hotel(p["hotel_codigo"]), "Allocations": p["allocations"],
         "Fechas": p["fechas"], "Modo": p["modo"], "Estado": p["estado"],
         "Allotment": (p["est_allotment"] + " " + p["obs_allotment"]).strip(),
         "Tarifa": (p["est_tarifa"] + " " + p["obs_tarifa"]).strip(),
         "En curso por": (p["tomado_por"] + " desde " + p["tomado_en"]
                          + (" ⚠️ ¿abandonado?" if p["abandonado"] else "")) if p["tomado_por"] else "",
     } for p in pedidos], use_container_width=True, hide_index=True)
+
+
+# ── Lectura del plan en Tourplan (proceso hijo, etapa 2) ─────────────────
+
+def _leer_proceso(proc, state):
+    """Hilo aparte: lee el stdout del subproceso sin bloquear a Streamlit."""
+    for line in proc.stdout:
+        state["log_lines"].append(line)
+    proc.wait()
+    state["returncode"] = proc.returncode
+    state["finished"] = True
+
+
+def render_lectura_tourplan():
+    st.markdown("#### Leer plan en Tourplan (solo lectura)")
+    st.caption("Abre Tourplan, lee cada allocation de los pedidos PENDIENTE y deja el plan en "
+               "OBSERVACIONES_CIERRE_ALLOTMENT. No escribe nada en Tourplan ni cambia el estado del pedido.")
+    cfg = user_config.cargar()
+    state = st.session_state.setdefault("_lectura", {
+        "running": False, "finished": False, "log_lines": [], "returncode": None,
+        "proc": None, "stop_file": None, "abort_requested": False})
+    base_url = URLS_ENTORNO[cfg["entorno"]]
+    if cfg["entorno"] == "produccion":
+        st.warning("Entorno PRODUCCIÓN configurado. La lectura no escribe, pero ocupa una licencia real.")
+    faltan = not (cfg["tp_usuario"] and cfg["tp_password"] and cfg["sheet_url"])
+    if faltan:
+        st.caption("Completá usuario/password de Tourplan y URL del Sheet en ⚙️ Configuración.")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        correr = st.button("Leer plan (lectura)", use_container_width=True,
+                           disabled=state["running"] or faltan)
+    with c2:
+        abortar = st.button("⏹ Abortar", use_container_width=True,
+                            disabled=not state["running"] or state["abort_requested"])
+    if correr:
+        run_dir = Path(tempfile.mkdtemp(prefix="allocation_"))
+        (run_dir / "screenshots").mkdir()
+        stop_file = run_dir / "ABORTAR.flag"
+        env = os.environ.copy()
+        env.update({
+            "TOURPLAN_USERNAME": cfg["tp_usuario"], "TOURPLAN_PASSWORD": cfg["tp_password"],
+            "TOURPLAN_BASE_URL": base_url, "TOURPLAN_SHEET_URL": cfg["sheet_url"],
+            "TOURPLAN_CREDENTIALS_PATH": user_config.CREDENTIALS_PATH,
+            "TOURPLAN_TOKEN_PATH": user_config.TOKEN_PATH,
+            "TOURPLAN_HEADLESS": "1" if cfg["headless"] else "0",
+            "TOURPLAN_VELOCIDAD": "1.5" if base_url == URL_PRODUCCION else "1.0",
+            "TOURPLAN_SS_DIR": str(run_dir / "screenshots"), "TOURPLAN_STOP_FILE": str(stop_file),
+            "TOURPLAN_MODO": MODO_LECTURA, "PYTHONPATH": str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", ""),
+            "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"})
+        proc = subprocess.Popen(
+            [sys.executable, str(REPO_ROOT / "runner.py")], cwd=str(REPO_ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+            errors="replace", bufsize=1)
+        state.update({"running": True, "finished": False, "log_lines": [], "returncode": None,
+                      "proc": proc, "stop_file": stop_file, "abort_requested": False})
+        threading.Thread(target=_leer_proceso, args=(proc, state), daemon=True).start()
+        st.rerun()
+    if abortar:
+        state["abort_requested"] = True
+        try:
+            state["stop_file"].touch()
+        except Exception:
+            pass
+    if state["log_lines"]:
+        st.code("".join(state["log_lines"][-300:]), language=None)
+    if state["running"] and state["finished"]:
+        state["running"] = False
+        rc = state["returncode"]
+        st.session_state.pop("cola_datos", None)  # fuerza releer la cola con las observaciones nuevas
+        if rc == 0:
+            st.success("Terminó OK. Refrescá la cola para ver el plan en OBSERVACIONES.")
+        elif rc == ABORT_EXIT_CODE:
+            st.info("⏸️ Abortado.")
+        else:
+            st.error(f"El proceso terminó con error (código {rc}). Revisá el log.")
+    if state["running"]:
+        time.sleep(1)
+        st.rerun()
 
 
 # ── Configuración ─────────────────────────────────────────────────────────

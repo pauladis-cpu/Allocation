@@ -14,14 +14,19 @@ de entorno + config por PC + OAuth de Google con gspread).
 | Etapa | Contenido | Estado |
 |---|---|---|
 | 1 | Lectura del Sheet, pantallas 1 a 3, escritura de pedidos en COLA (sin Selenium) | **hecha** |
-| 2 | Selenium en modo lectura contra Tourplan de prueba | pendiente |
+| 2 | Selenium en modo lectura contra Tourplan de prueba (allocations) | **hecha, sin probar en Tourplan real** |
 | 3 | Aplicar allocations (prueba) | pendiente |
 | 4–5 | Rates en lectura / aplicar (prueba) | pendiente |
 | 6 | Cola completa (tomar pedidos, EN CURSO, "Enviar y ejecutar") | pendiente |
 | 7 | Endurecimiento | pendiente |
 
-En la etapa 1 los botones «Enviar y ejecutar» y «Ejecutar pendientes» están
-deshabilitados a propósito. **Nada se escribe en Tourplan.**
+«Enviar y ejecutar» y «Ejecutar pendientes» siguen deshabilitados hasta la etapa 6.
+**Nada se escribe en Tourplan.** En la pantalla Cola, «Leer plan (lectura)» abre
+Tourplan, lee las allocations de los pedidos PENDIENTE y deja el plan en
+`OBSERVACIONES_CIERRE_ALLOTMENT` (no cambia ESTADO ni toma el pedido). El módulo
+de Selenium de esta etapa no tiene ninguna función que escriba Max/Release ni Save.
+Los selectores salen de la especificación y de las grabaciones: hay que validarlos
+contra el Tourplan de prueba (ver «Etapa 2: cómo probar»).
 
 ## Cómo correrla
 
@@ -68,7 +73,13 @@ allocation/
   fechas.py             Atajos de texto, rangos, ventana de 2 años, texto normalizado de la cola
   registro.py           Lee ALLOCATIONS, agrupa por hotel, busca
   cola.py               Arma y escribe pedidos en COLA, lee y clasifica estados
+  plan.py               Decisión por fecha (Used/Max/Release), con barrera «nunca reabrir»
+tourplan_flujos/
+  allocations.py        Selenium (solo lectura): supplier, menú, filtro, allocation, días
+runner.py               Proceso hijo que lee los pedidos PENDIENTE en Tourplan (modo lectura)
 common/
+  tourplan.py           Helpers Selenium (copiados de la referencia): login/logout, esperas, set_val
+  abort.py, chrome_bootstrap.py   Copias sin cambios de Drive-TP-NX-App
   sheets_client.py      Copia sin cambios de Drive-TP-NX-App (OAuth + gspread)
   user_config.py        Config por PC (adaptada a esta app)
 tests/                  Pruebas unitarias de la lógica pura y de la escritura en COLA
@@ -81,8 +92,21 @@ tests/                  Pruebas unitarias de la lógica pura y de la escritura e
   o el siguiente si el mes ya pasó (en octubre, `5/1` es enero próximo).
 - Texto normalizado de la cola: `2026-10-08; 2026-10-20..2026-10-23`.
 
+## Etapa 2: cómo probar contra Tourplan de prueba
+
+1. En ⚙️ Configuración: usuario/password de Test, entorno `test`, tu nombre.
+2. Cargá en Test un hotel del registro (ej. `6RABA1` con su allocation `Standard` /
+   `Standard CIERRA DATABASE` y la habitación `BUEHT6RABA1ST`).
+3. Enviá un pedido en modo lectura a la cola y, en la pestaña Cola, «Leer plan (lectura)».
+4. Mirá el log y `OBSERVACIONES_CIERRE_ALLOTMENT`. Si algún selector no coincide, el log
+   dice en qué paso se frenó y se guarda una captura en la carpeta temporal de la corrida.
+
 ## Pruebas
 
 ```bash
 pip install -r requirements.txt && python -m pytest
 ```
+
+`tests/test_flujo_allocations_dom.py` prueba el JS del flujo contra un DOM simulado de
+Tourplan (diálogo, habitaciones y grilla de días virtual); necesita `playwright` y la
+variable `CHROME_BIN` con la ruta de un Chrome/Chromium, y si no se saltea.

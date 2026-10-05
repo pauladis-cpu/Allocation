@@ -56,7 +56,7 @@ def test_pedido_todas_y_lista():
                           cargado_por="Ana", ahora=ahora)
     assert v[cola.C_ALLOCS] == "1EDE01 CL; SPWV"
     assert v[cola.C_FECHAS] == "2026-10-08; 2026-10-20..2026-10-21" and v[cola.C_CANT] == 3
-    assert v[cola.C_MODO] == "lectura" and cola.C_HOTEL not in v
+    assert v[cola.C_MODO] == "lectura"
     assert v[cola.C_EST_ALLOT] == v[cola.C_EST_TARIFA] == "PENDIENTE"
     t = cola.armar_pedido(codigo_hotel="1EDE01", allocations=[], todas=True,
                           fechas=[date(2026, 10, 8)], cargado_por="Ana")
@@ -110,15 +110,13 @@ class FakeWS:
         self.row_count += n
 
 
-def test_enviar_pedido_no_escribe_hotel_y_verifica():
+def test_enviar_pedido_y_verifica():
     from datetime import date
     ws = FakeWS(cola.COLUMNAS_COLA)
     v = cola.armar_pedido(codigo_hotel="1EDE01", allocations=["SPWV"], todas=False,
                           fechas=[date(2026, 10, 8)], cargado_por="Ana")
     fila_n = cola.enviar_pedido(ws, v)
     assert fila_n == 2
-    hotel_col = cola.COLUMNAS_COLA.index(cola.C_HOTEL)
-    assert ws.filas[1][hotel_col] == ""          # fórmula del Sheet: intacta
     assert ws.filas[1][0] == v[cola.C_ID]
 
 
@@ -154,3 +152,22 @@ def test_estados_y_abandono():
 def test_encabezados_reales_de_cola():
     # tal como figuran en Registro_de_Allocation_v3.xlsx
     assert cola.C_ORIGEN == "Origen (asunto o remitente del mail)"
+
+
+def test_columna_hotel_vieja_en_el_sheet_se_ignora():
+    # si el Sheet todavía tiene la columna "Hotel" (fórmula), no se pisa
+    ws = FakeWS(cola.COLUMNAS_COLA[:4] + ["Hotel"] + cola.COLUMNAS_COLA[4:])
+    from datetime import date
+    v = cola.armar_pedido(codigo_hotel="H", allocations=["A"], todas=False,
+                          fechas=[date(2026, 10, 8)], cargado_por="Ana")
+    n = cola.enviar_pedido(ws, v)
+    assert ws.filas[n - 1][4] == ""
+
+
+def test_resolver_allocations():
+    allocs = registro.construir_allocations(FILAS, COLS)
+    ede = [a for a in allocs if a.codigo_hotel == "1EDE01"]
+    enc, falta = registro.resolver_allocations("TODAS", ede)
+    assert len(enc) == 2 and not falta
+    enc, falta = registro.resolver_allocations("spwv; NO-EXISTE", ede)
+    assert [a.codigo for a in enc] == ["SPWV"] and falta == ["NO-EXISTE"]

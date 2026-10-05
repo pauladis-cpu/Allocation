@@ -4,8 +4,9 @@ Un pedido es un hotel. Cada fase (allocation, tarifa) tiene su propio estado
 para poder retomar si una falla. Estados: PENDIENTE -> EN CURSO -> OK /
 SALTEADO / "ERROR: detalle".
 
-La columna "Hotel" es una FÓRMULA del Sheet: esta app nunca la escribe.
-Las columnas se ubican por encabezado. Nunca se modifican encabezados.
+La hoja ya no usa la columna "Hotel" (el nombre se resuelve con el registro).
+Si todavía existe en el Sheet, la app la ignora y nunca la escribe. Las columnas
+se ubican por encabezado y nunca se modifican encabezados.
 """
 
 import secrets
@@ -22,7 +23,6 @@ C_ID = "ID_PEDIDO"
 C_FECHA_CARGA = "Fecha de carga"
 C_CARGADO_POR = "Cargado por"
 C_HOTEL_COD = "Hotel (código)"
-C_HOTEL = "Hotel"                       # fórmula: NO escribir
 C_ALLOCS = "Allocation(es) (código o TODAS)"
 C_FECHAS = "Fechas a cerrar"
 C_CANT = "Cant. de fechas"
@@ -36,12 +36,11 @@ C_TOMADO_POR = "TOMADO_POR"
 C_TOMADO_EN = "TOMADO_EN"
 
 COLUMNAS_COLA = [
-    C_ID, C_FECHA_CARGA, C_CARGADO_POR, C_HOTEL_COD, C_HOTEL, C_ALLOCS, C_FECHAS, C_CANT,
+    C_ID, C_FECHA_CARGA, C_CARGADO_POR, C_HOTEL_COD, C_ALLOCS, C_FECHAS, C_CANT,
     C_ORIGEN, C_MODO, C_EST_ALLOT, C_OBS_ALLOT, C_EST_TARIFA, C_OBS_TARIFA,
     C_TOMADO_POR, C_TOMADO_EN,
 ]
-# La app no necesita C_HOTEL (fórmula) para escribir, pero sí que exista el resto.
-COLUMNAS_ESCRITAS = [c for c in COLUMNAS_COLA if c != C_HOTEL]
+COLUMNAS_ESCRITAS = list(COLUMNAS_COLA)
 
 FORMATO_FECHA_HORA = "%Y-%m-%d %H:%M:%S"
 
@@ -112,15 +111,13 @@ def verificar_columnas(columnas):
 def enviar_pedido(ws, valores, intentos=3):
     """Agrega el pedido al final de COLA y verifica que la fila quedó con nuestro
     ID_PEDIDO (dos PCs podrían escribir la misma fila a la vez; Sheets no tiene
-    escritura atómica). Devuelve el número de fila. Nunca escribe la columna Hotel."""
+    escritura atómica). Devuelve el número de fila."""
     from common.sheets_client import actualizar_fila_sheet
     columnas = ws.row_values(1)
     verificar_columnas(columnas)
-    valores = {k: v for k, v in valores.items() if k != C_HOTEL}
     col_id = columnas.index(C_ID) + 1
     for _ in range(intentos):
-        # primera fila libre según ID_PEDIDO (la columna Hotel puede traer fórmulas
-        # en filas "vacías", por eso no se usa la cantidad de filas de la hoja)
+        # primera fila libre según ID_PEDIDO
         ids = ws.col_values(col_id)
         row_idx = len(ids) + 1
         actualizar_fila_sheet(ws, row_idx, columnas, valores)
@@ -199,7 +196,6 @@ def leer_cola(ws, minutos_abandono=30, ahora=None):
             "cargado": f.get(C_FECHA_CARGA, ""),
             "cargado_por": f.get(C_CARGADO_POR, ""),
             "hotel_codigo": f.get(C_HOTEL_COD, ""),
-            "hotel": f.get(C_HOTEL, ""),
             "allocations": f.get(C_ALLOCS, ""),
             "fechas": f.get(C_FECHAS, ""),
             "cant": f.get(C_CANT, "") or n_fechas,
