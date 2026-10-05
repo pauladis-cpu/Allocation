@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --fg:#1f2430; --mut:#8a90a0; --bd:#d9dce3; --sel:#1b6ef3; --selfg:#fff; --today:#f5a623; --dis:#c4c8d2; --bg:transparent; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#e6e8ee; --mut:#9aa0b0; --bd:#3a3f4d; --dis:#555a68; } }
+  body { margin:0; font-family: "Source Sans Pro", system-ui, sans-serif; color:var(--fg); background:var(--bg); user-select:none; }
+  .nav { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .nav button { border:1px solid var(--bd); background:transparent; color:var(--fg); border-radius:6px; padding:2px 10px; cursor:pointer; font-size:14px; }
+  .nav .hint { color:var(--mut); font-size:12px; margin-left:auto; }
+  .meses { display:flex; flex-wrap:wrap; gap:16px; }
+  .mes { width:196px; }
+  .mes h4 { margin:0 0 4px; font-size:14px; text-align:center; text-transform:capitalize; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .dow { font-size:11px; color:var(--mut); text-align:center; }
+  .d { height:26px; line-height:26px; text-align:center; font-size:13px; border-radius:5px; cursor:pointer; }
+  .d:hover:not(.dis):not(.sel) { background:rgba(27,110,243,.15); }
+  .d.hoy { outline:2px solid var(--today); outline-offset:-2px; }
+  .d.sel { background:var(--sel); color:var(--selfg); }
+  .d.dis { color:var(--dis); cursor:default; }
+  .d.vacio { cursor:default; }
+</style>
+</head>
+<body>
+<div class="nav">
+  <button id="prev" title="Meses anteriores">&#9664;</button>
+  <button id="next" title="Meses siguientes">&#9654;</button>
+  <span class="hint">Clic: marca/desmarca un día · Shift+clic: rango desde el último clic</span>
+</div>
+<div class="meses" id="meses"></div>
+<script>
+  const NMESES = 3;
+  const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const DOW = ["L","M","M","J","V","S","D"];
+  let hoy = null, tope = null, sel = new Set(), anchor = null, vistaAnio = null, vistaMes = null;
+
+  const iso = (y,m,d) => y + "-" + String(m+1).padStart(2,"0") + "-" + String(d).padStart(2,"0");
+  const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+  const isoDe = dt => iso(dt.getFullYear(), dt.getMonth(), dt.getDate());
+
+  function send(type, extra) {
+    window.parent.postMessage(Object.assign({isStreamlitMessage:true, type:type}, extra), "*");
+  }
+  function emitir() { send("streamlit:setComponentValue", {value:{sel:Array.from(sel).sort(), n:Date.now()}, dataType:"json"}); }
+  function habilitado(s) { return s >= hoy && s <= tope; }
+
+  function clic(s, shift) {
+    if (!habilitado(s)) return;
+    if (shift && anchor) {
+      let a = parse(anchor), b = parse(s);
+      if (b < a) { const t = a; a = b; b = t; }
+      for (let d = new Date(a); d <= b; d.setDate(d.getDate()+1)) {
+        const k = isoDe(d); if (habilitado(k)) sel.add(k);
+      }
+    } else {
+      if (sel.has(s)) sel.delete(s); else sel.add(s);
+    }
+    anchor = s;
+    dibujar(); emitir();
+  }
+
+  function dibujar() {
+    const cont = document.getElementById("meses");
+    cont.innerHTML = "";
+    for (let i = 0; i < NMESES; i++) {
+      const base = new Date(vistaAnio, vistaMes + i, 1);
+      const y = base.getFullYear(), m = base.getMonth();
+      const mes = document.createElement("div"); mes.className = "mes";
+      mes.innerHTML = "<h4>" + MESES[m] + " " + y + "</h4>";
+      const g = document.createElement("div"); g.className = "grid";
+      DOW.forEach(t => { const e = document.createElement("div"); e.className = "dow"; e.textContent = t; g.appendChild(e); });
+      const offset = (base.getDay() + 6) % 7;
+      for (let k = 0; k < offset; k++) { const e = document.createElement("div"); e.className = "d vacio"; g.appendChild(e); }
+      const ndias = new Date(y, m + 1, 0).getDate();
+      for (let d = 1; d <= ndias; d++) {
+        const s = iso(y, m, d);
+        const e = document.createElement("div");
+        e.className = "d" + (habilitado(s) ? "" : " dis") + (sel.has(s) ? " sel" : "") + (s === hoy ? " hoy" : "");
+        e.textContent = d;
+        e.addEventListener("click", ev => clic(s, ev.shiftKey));
+        g.appendChild(e);
+      }
+      mes.appendChild(g); cont.appendChild(mes);
+    }
+    send("streamlit:setFrameHeight", {height: document.body.scrollHeight + 8});
+  }
+
+  function mover(delta) {
+    const b = new Date(vistaAnio, vistaMes + delta, 1);
+    vistaAnio = b.getFullYear(); vistaMes = b.getMonth(); dibujar();
+  }
+  document.getElementById("prev").addEventListener("click", () => mover(-NMESES));
+  document.getElementById("next").addEventListener("click", () => mover(NMESES));
+
+  window.addEventListener("message", ev => {
+    if (!ev.data || ev.data.type !== "streamlit:render") return;
+    const a = ev.data.args || {};
+    const primera = hoy === null;
+    hoy = a.hoy; tope = a.tope;
+    sel = new Set(a.seleccion || []);
+    if (primera) {
+      const h = parse(hoy); vistaAnio = h.getFullYear(); vistaMes = h.getMonth();
+    }
+    dibujar();
+  });
+  send("streamlit:componentReady", {apiVersion:1});
+</script>
+</body>
+</html>
