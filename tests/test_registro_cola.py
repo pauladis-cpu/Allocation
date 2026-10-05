@@ -149,3 +149,8 @@ def test_estados_y_abandono():
     assert cola.estado_global({cola.C_EST_ALLOT: "OK", cola.C_EST_TARIFA: "SALTEADO"}) == "OK"
     assert cola.estado_global({cola.C_EST_ALLOT: "OK", cola.C_EST_TARIFA: "ERROR: x"}) == "ERROR"
     assert cola.clasificar_estado("OK (3 cerradas)") == "OK"
+
+
+def test_encabezados_reales_de_cola():
+    # tal como figuran en Registro_de_Allocation_v3.xlsx
+    assert cola.C_ORIGEN == "Origen (asunto o remitente del mail)"

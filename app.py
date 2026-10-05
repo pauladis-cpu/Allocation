@@ -245,9 +245,6 @@ def render_fechas():
                 st.info(f"**{a.codigo}**: {len(despues)} fecha(s) posterior(es) a «Vigente hasta» "
                         f"({fmt_fecha(a.vigente_hasta)}): en allocation no se tocan"
                         + ("; en tarifas sí se cierran." if a.cierra_tarifa else "."))
-        elif not a.vacia and not a.vigente_hasta:
-            st.warning(f"**{a.codigo}**: «Vigente hasta» no figura o no se entiende; "
-                       "no puedo avisar qué fechas quedan fuera de lo cargado.")
 
     puede = bool(sel) and bool(elegidas)
     if st.button("Continuar ➜", type="primary", disabled=not puede):
@@ -275,6 +272,8 @@ def _plan_texto(hotel, elegidas):
             t = a.tarifas.strip().upper()
             alcance.add("las habitaciones HT del hotel, excepto " + ", ".join(sorted(EXCLUDED_OPTIONS))
                         if t == "TODAS" else
+                        "⚠️ alcance por definir (REVISAR): no se cerrarán tarifas hasta completarlo en el registro"
+                        if t == "REVISAR" else
                         "la habitación linkeada" if t == "LINKEADA" else a.tarifas)
         lineas.append("**Tarifas**: cierra períodos en Rates (Manual/Closed y tarifa en 0) de: "
                       + " + ".join(sorted(alcance)) + ".")
