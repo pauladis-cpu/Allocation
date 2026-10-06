@@ -250,3 +250,11 @@ def test_provisional_de_price_code_manual_pasa_a_manual(drv):
     assert e.nuevo_status == "Manual"
     rt.editar_periodo(drv, HAB, e)
     assert rt.leer_periodos(drv, rangos)[0].status == "Manual"
+
+
+def test_editar_periodo_de_fx_se_niega_sin_abrir_el_dialogo(drv):
+    drv.page.evaluate("() => { document.querySelectorAll('#tb .tpcol-pricecodecode')[1].textContent = 'FX'; }")
+    fx = next(p for p in rt.leer_periodos(drv) if p.pc == "FX")
+    with pytest.raises(rp.PlanRatesError, match="FX"):
+        rt.editar_periodo(drv, HAB, rp.Edicion(fx, "Closed"))
+    assert drv.find_elements(None, "body > tp-dialog") == []                 # ni siquiera se abrió

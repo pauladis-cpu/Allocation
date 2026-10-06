@@ -323,11 +323,10 @@ def verificar_titulo_periodo(driver, cod_largo, periodo):
 
 # ── 6.5: un corte (split) ───────────────────────────────────────────────────
 
-def hacer_corte(driver, cod_largo, periodo, fecha_corte, aplicar_a_todos=True):
+def hacer_corte(driver, cod_largo, periodo, fecha_corte):
     """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo.
-    aplicar_a_todos=True deja tildado 'Split All Applicable Price Codes' (corta todos los price codes con
-    exactamente ese período); False lo destilda, para cortar SOLO el price code abierto (cuando otro price
-    code, como FX, comparte el período y no debe tocarse)."""
+    Deja tildado 'Split All Applicable Price Codes': corta todos los price codes con exactamente ese período
+    (FX incluido: su período puede cortarse, lo único que nunca se hace con FX es editarlo)."""
     _clic_fila(driver, periodo)
     try:
         verificar_titulo_periodo(driver, cod_largo, periodo)
@@ -349,17 +348,15 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte, aplicar_a_todos=True):
             var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return i ? !!i.checked : null;""")
         if marcado is None:
             raise FlujoError("No encontré la casilla 'Split All Applicable Price Codes'.")
-        if bool(marcado) != bool(aplicar_a_todos):
+        if not marcado:
             driver.execute_script(_JS_DLG + """
                 var l = dlg.querySelector('label[for="split-applicable"]');
                 if (l) { l.click(); } else { var c = dlg.querySelector('#split-applicable'); c.click(); }""")
             time.sleep(0.5 * tp.VELOCIDAD)
-            ahora = driver.execute_script(_JS_DLG + """
+            if not driver.execute_script(_JS_DLG + """
                 var c = dlg.querySelector('#split-applicable');
-                var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return !!(i && i.checked);""")
-            if bool(ahora) != bool(aplicar_a_todos):
-                raise FlujoError("No pude dejar 'Split All Applicable Price Codes' como se necesita "
-                                 f"({'tildado' if aplicar_a_todos else 'destildado'}).")
+                var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return !!(i && i.checked);"""):
+                raise FlujoError("No pude tildar 'Split All Applicable Price Codes'.")
         inp = driver.execute_script(_JS_DLG + "return dlg.querySelector('input.tpdate-productdatesplitpoint');")
         if inp is None:
             raise FlujoError("No encontré el campo de fecha de corte.")
@@ -511,6 +508,7 @@ def editar_periodo(driver, cod_largo, ed):
     """Abre el período, verifica el título, pone la tarifa en 0, cambia el status y guarda.
     En Rates el diálogo se cierra solo al guardar."""
     p, nuevo = ed.periodo, ed.nuevo_status
+    rp.verificar_no_es_intocable(p.pc)          # FX: nunca se pone la tarifa en 0 ni se cambia el status
     actual = rp.normalizar_status(p.status)
     rp.verificar_no_pasa_de_closed_a_manual(actual, nuevo)
     _clic_fila(driver, p)
@@ -555,10 +553,8 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
-            solo_este = rp.corte_afecta_a_intocables(periodos, c)
-            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}"
-                  + (f" (solo {candidato.pc}: hay {rp.PRICE_CODE_INTOCABLE} con el mismo período)" if solo_este else ""), flush=True)
-            hacer_corte(driver, cod_hab, candidato, c.fecha, aplicar_a_todos=not solo_este)
+            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}", flush=True)
+            hacer_corte(driver, cod_hab, candidato, c.fecha)
             cortes += 1
             continue
         if not aplicar:

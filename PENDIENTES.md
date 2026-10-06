@@ -30,9 +30,9 @@
 
 ## Hecho (para no perderlo de vista)
 - [x] Sin scroll vertical en las pantallas (tamaños compactos y escala automática según el alto de la ventana).
-- [x] Reglas de tarifas actualizadas (ver README): Provisional como Confirmed, Terminal a Closed, FX nunca se toca.
+- [x] Reglas de tarifas actualizadas (ver README): Provisional como Confirmed, Terminal a Closed, FX nunca se edita (sí puede cortarse).
 
 ## Validar en Test: reglas nuevas de tarifas
 - [ ] Un período Provisional (TR/ND/EM a Manual, otros a Closed) y uno Terminal (a Closed) con el pedido real.
-- [ ] Hotel con price code FX que comparte el período: el corte se hace destildando «Split All Applicable Price Codes»
-  (un corte por cada price code) y el período de FX queda intacto.
+- [ ] Hotel con price code FX que comparte el período: el corte (con «Split All Applicable Price Codes») corta también a FX,
+  y después FX queda sin tarifa en 0 ni cambio de status.

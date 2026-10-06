@@ -8,7 +8,7 @@ Reglas:
   - Closed -> se saltea. Manual -> se saltea si el objetivo es Manual, si no pasa a Closed.
     Confirmed y Provisional -> pasan al objetivo (TR/ND/EM a Manual, el resto a Closed).
     Terminal -> pasa a Closed sin importar el price code.
-  - El price code FX NUNCA se toca: ni se edita ni se corta su período.
+  - El price code FX NUNCA se edita (ni tarifa ni status). Su período SÍ puede cortarse (split).
   - Un período en Closed NUNCA pasa a Manual (dos barreras: acá y justo antes del clic).
   - Un período por rango consecutivo. No se fusionan períodos existentes.
   - Solo se parte donde el borde del rango cae ADENTRO del período.
@@ -23,7 +23,7 @@ from allocation.constantes import PRICE_CODES_MANUAL
 CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL = "Confirmed", "Provisional", "Terminal", "Closed", "Manual"
 STATUS_CONOCIDOS = {s.casefold(): s for s in (CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL)}
 RATE_NAME_ESPERADO = "standard"
-PRICE_CODE_INTOCABLE = "FX"   # nunca se hacen cambios en sus períodos
+PRICE_CODE_INTOCABLE = "FX"   # nunca se le cambia la tarifa ni el status (sí puede cortarse)
 
 
 class PlanRatesError(Exception):
@@ -57,7 +57,7 @@ class Plan:
     cortes: list = field(default_factory=list)
     ediciones: list = field(default_factory=list)
     ya_cerrados: list = field(default_factory=list)   # filas que se saltean (ya cerradas)
-    intocables: list = field(default_factory=list)    # filas del price code FX: nunca se tocan
+    intocables: list = field(default_factory=list)    # filas del price code FX: nunca se editan
     sin_periodo: list = field(default_factory=list)   # fechas del pedido que ningún período cubre
 
 
@@ -92,10 +92,10 @@ def decidir_status(actual, pc):
     raise PlanRatesError(f"Status {actual!r} no contemplado (price code {pc}): se frena el pedido, revisar a mano.")
 
 
-def corte_afecta_a_intocables(periodos, corte):
-    """True si alguna fila FX tiene exactamente el mismo período que se va a cortar. En ese caso el corte
-    NO puede hacerse con 'Split All Applicable Price Codes' (cortaría también el período de FX)."""
-    return any(es_intocable(p.pc) and (p.ini, p.fin) == (corte.ini, corte.fin) for p in periodos)
+def verificar_no_es_intocable(pc):
+    """Barrera antes de escribir: el price code FX nunca se edita (ni tarifa ni status)."""
+    if es_intocable(pc):
+        raise PlanRatesError(f"El price code {PRICE_CODE_INTOCABLE} no se edita: nunca se cambia su tarifa ni su status.")
 
 
 def verificar_no_pasa_de_closed_a_manual(actual, nuevo):
@@ -120,7 +120,7 @@ def planear(periodos, rangos):
         if not solapados:
             continue
         if es_intocable(p.pc):
-            plan.intocables.append(p)          # FX: no se evalúa ni se toca
+            plan.intocables.append(p)          # FX: no se evalúa ni se edita (puede cortarse junto con los demás)
             continue
         if p.rate_name.strip().casefold() != RATE_NAME_ESPERADO:
             raise PlanRatesError(
@@ -199,7 +199,7 @@ def resumen(codigo_largo, plan, lectura=True):
             f"{c.fecha:%d/%m/%y}" for c in plan.cortes) + ")")
     partes.append(f"ya cerrados {len(plan.ya_cerrados)}")
     if plan.intocables:
-        partes.append(f"{PRICE_CODE_INTOCABLE} sin tocar {len(plan.intocables)}")
+        partes.append(f"{PRICE_CODE_INTOCABLE} sin editar {len(plan.intocables)}")
     if plan.sin_periodo:
         from allocation.plan import _rangos_txt
         partes.append(f"SIN PERÍODO en Rates: {_rangos_txt(plan.sin_periodo)}")

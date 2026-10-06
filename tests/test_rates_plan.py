@@ -77,7 +77,7 @@ def test_terminal_pasa_a_closed_sin_importar_el_price_code():
         assert r.decidir_status("Terminal", pc) == "Closed"
 
 
-def test_fx_nunca_se_toca():
+def test_fx_nunca_se_edita():
     for st in ("Confirmed", "Provisional", "Terminal", "Manual", "Closed"):
         assert r.decidir_status(st, "FX") is None
         assert r.decidir_status(st, "fx") is None
@@ -86,28 +86,43 @@ def test_fx_nunca_se_toca():
          P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Terminal")]
     plan = r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
     assert [p.pc for p in plan.intocables] == ["FX"]
-    assert all(c.fecha not in () for c in plan.cortes)                      # hay cortes por TR, no por FX
-    assert {e.periodo.pc for e in plan.ediciones} <= {"TR"}
+    assert plan.ediciones == [] and plan.cortes                               # primero hay que cortar (por TR)
+
+
+def test_fx_comparte_el_corte_pero_nunca_se_edita():
+    """El split con 'Split All Applicable Price Codes' corta también el período de FX (permitido); después
+    solo se editan los demás price codes."""
+    antes = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Confirmed"), P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Confirmed")]
+    rangos = [(D(2026, 12, 10), D(2026, 12, 12))]
+    plan = r.planear(antes, rangos)
+    assert [(c.ini, c.fin, c.fecha) for c in plan.cortes][0] == (D(2026, 12, 1), D(2026, 12, 25), D(2026, 12, 10))
+    despues = [P(D(2026, 12, 1), D(2026, 12, 9), "FX", "Confirmed"), P(D(2026, 12, 10), D(2026, 12, 12), "FX", "Confirmed"),
+               P(D(2026, 12, 13), D(2026, 12, 25), "FX", "Confirmed"),
+               P(D(2026, 12, 1), D(2026, 12, 9), "TR", "Confirmed"), P(D(2026, 12, 10), D(2026, 12, 12), "TR", "Confirmed"),
+               P(D(2026, 12, 13), D(2026, 12, 25), "TR", "Confirmed")]
+    plan = r.planear(despues, rangos)
+    assert plan.cortes == [] and [(e.periodo.pc, e.nuevo_status) for e in plan.ediciones] == [("TR", "Manual")]
+    assert [p.pc for p in plan.intocables] == ["FX"]
 
 
 def test_fx_solo_no_genera_cortes_ni_ediciones():
     g = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Confirmed")]
     plan = r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
     assert plan.cortes == [] and plan.ediciones == [] and len(plan.intocables) == 1
-    assert plan.sin_periodo == []                                           # el período existe aunque no se toque
+    assert plan.sin_periodo == []                                           # el período existe aunque no se edite
 
 
-def test_el_split_no_puede_cortar_el_periodo_de_fx():
-    g = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Confirmed"), P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Confirmed"),
-         P(D(2027, 1, 1), D(2027, 1, 31), "TR", "Confirmed")]
-    corte = r.Corte(D(2026, 12, 1), D(2026, 12, 25), D(2026, 12, 10))
-    assert r.corte_afecta_a_intocables(g, corte)                            # FX comparte el período: split individual
-    assert not r.corte_afecta_a_intocables(g, r.Corte(D(2027, 1, 1), D(2027, 1, 31), D(2027, 1, 10)))
+def test_barrera_fx_antes_de_escribir():
+    with pytest.raises(r.PlanRatesError, match="FX"):
+        r.verificar_no_es_intocable("FX")
+    with pytest.raises(r.PlanRatesError):
+        r.verificar_no_es_intocable("fx")
+    r.verificar_no_es_intocable("TR")
 
 
 def test_resumen_informa_fx():
     g = [P(D(2026, 12, 10), D(2026, 12, 12), "FX", "Confirmed"), P(D(2026, 12, 10), D(2026, 12, 12), "TR", "Manual")]
-    assert "FX sin tocar 1" in r.resumen("HAB", r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))]))
+    assert "FX sin editar 1" in r.resumen("HAB", r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))]))
 
 
 def test_fuera_del_rango_no_frena():
