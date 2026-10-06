@@ -269,3 +269,59 @@ def test_filas_con_el_mismo_periodo_y_price_code_pero_distinto_rate_name_se_dist
     rt.editar_periodo(drv, HAB, rp.Edicion(promo, "Manual"))
     estados = {p.rate_name: p.status for p in rt.leer_periodos(drv) if p.pc == "TR" and p.ini == date(2026, 12, 1)}
     assert estados == {"Standard": "Confirmed", "Promo": "Manual"}          # se abrió y editó solo la fila Promo
+
+
+HTML_SPLIT = r"""
+<html><body>
+<table><thead><tr><th class="tpcol-RatePeriod">Rate Period</th></tr></thead><tbody id="tb">
+ <tr><td class="tpcol-rateperiod">01/Dec/2026 - 25/Dec/2026</td><td class="tpcol-pricecodecode">TR</td>
+     <td class="tpcol-ratestatuses">Confirmed</td><td class="tpcol-ratenames">Standard</td></tr></tbody></table>
+<script>
+  window.log = []; const MES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const fmt = d => String(d.getDate()).padStart(2,'0') + '/' + MES[d.getMonth()] + '/' + d.getFullYear();
+  document.getElementById('tb').addEventListener('click', e => {
+    if (!e.target.closest('td.tpcol-rateperiod')) return;
+    const d = document.createElement('tp-dialog');
+    d.innerHTML = '<div class="tpmodal-productcosts"><h3>%(hab)s   01/Dec/2026/25/Dec/2026 "TR"</h3>'
+      + '<tp-button class="splitdaterange"><button>Split Date Range</button></tp-button>'
+      + '<tp-button class="save"><button disabled>Save</button></tp-button><tp-button class="cancel"><button>Exit</button></tp-button></div>';
+    document.body.appendChild(d);
+    d.querySelector('tp-button.cancel button').addEventListener('click', () => d.remove());
+    d.querySelector('tp-button.splitdaterange button').addEventListener('click', () => {
+      const s = document.createElement('tp-dialog');
+      s.innerHTML = '<div class="split-content-panel"><h3>Split Date - 01/Dec/2026 - 25/Dec/2026</h3>'
+        + (window.CASILLA ? '<tp-checkbox id="split-applicable"><label class="tpcheckbox"><input type="checkbox"></label></tp-checkbox>'
+                            + '<label for="split-applicable">Split All Applicable Price Codes</label>' : '')
+        + '<div><input type="text" class="tpdate-productdatesplitpoint"><input type="hidden" class="tphidden"></div>'
+        + '<button class="tpbutton-addsplit" disabled>Add Split</button><ul class="dateranges"></ul>'
+        + '<tp-button class="ok"><button>OK</button></tp-button></div>';
+      document.body.appendChild(s);
+      const inp = s.querySelector('.tpdate-productdatesplitpoint'), hid = s.querySelector('.tphidden'), add = s.querySelector('.tpbutton-addsplit');
+      inp.addEventListener('blur', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/); if (!m) return;
+        const f = new Date(2000 + +m[3], +m[2]-1, +m[1]); hid.value = fmt(f); add.disabled = !(f > new Date(2026,11,1) && f <= new Date(2026,11,25)); });
+      const chk = s.querySelector('#split-applicable input');
+      if (chk) label_click: { s.querySelector('label[for="split-applicable"]').addEventListener('click', () => { chk.checked = !chk.checked; window.log.push('casilla:' + chk.checked); }); }
+      add.addEventListener('click', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/), f = new Date(2000 + +m[3], +m[2]-1, +m[1]), a = new Date(f); a.setDate(a.getDate() - 1);
+        s.querySelector('ul.dateranges').innerHTML = '<li><span class="date-range-display">Tue 01/Dec/2026 - Tue ' + fmt(a) + '</span></li><li><span class="date-range-display">Wed ' + fmt(f) + ' - Fri 25/Dec/2026</span></li>'; });
+      s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + inp.value + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove(); });
+    });
+  });
+</script></body></html>
+""" % {"hab": HAB}
+
+
+@pytest.mark.parametrize("con_casilla", [True, False])
+def test_split_tilda_la_casilla_solo_si_aparece(con_casilla):
+    """Tourplan solo muestra 'Split All Applicable Price Codes' si más de un price code comparte el período."""
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        pg = b.new_page()
+        pg.set_content(HTML_SPLIT)
+        pg.evaluate("window.CASILLA = %s" % ("true" if con_casilla else "false"))
+        d = Driver(pg)
+        per = rt.leer_periodos(d)[0]
+        rt.hacer_corte(d, HAB, per, date(2026, 12, 10))
+        log = pg.evaluate("window.log")
+        assert log[-1] == "ok:10/12/26:todos=" + ("true" if con_casilla else "sin-casilla")
+        assert d.find_elements(None, "body > tp-dialog") == []          # se cerraron el split y el período
+        b.close()

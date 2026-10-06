@@ -329,8 +329,9 @@ def verificar_titulo_periodo(driver, cod_largo, periodo):
 
 def hacer_corte(driver, cod_largo, periodo, fecha_corte):
     """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo.
-    Deja tildado 'Split All Applicable Price Codes': corta todos los price codes con exactamente ese período
-    (FX incluido: su período puede cortarse, lo único que nunca se hace con FX es editarlo)."""
+    Si aparece la casilla 'Split All Applicable Price Codes' (solo cuando más de un price code comparte
+    exactamente el período) la deja tildada: corta todos esos price codes (FX incluido: su período puede
+    cortarse, lo único que nunca se hace con FX es editarlo). Si no aparece, corta sin ella."""
     _clic_fila(driver, periodo)
     try:
         verificar_titulo_periodo(driver, cod_largo, periodo)
@@ -348,11 +349,15 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte):
         if not m or (_fecha_tp(m.group(1)), _fecha_tp(m.group(2))) != (periodo.ini, periodo.fin):
             raise FlujoError(f"El diálogo de Split dice {titulo!r}, se esperaba {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y}.")
         marcado = driver.execute_script(_JS_DLG + """
-            var c = dlg.querySelector('#split-applicable'); if (!c) return null;
+            var c = dlg.querySelector('#split-applicable');
+            if (!c || !(c.offsetWidth || c.offsetHeight || c.getClientRects().length)) return null;   // no existe o está oculta
             var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return i ? !!i.checked : null;""")
         if marcado is None:
-            raise FlujoError("No encontré la casilla 'Split All Applicable Price Codes'.")
-        if not marcado:
+            # Tourplan solo muestra la casilla cuando más de un price code comparte exactamente el período.
+            # Si no aparece no hay nada que tildar: el split se hace sin ella.
+            print("    ↳ no hay casilla 'Split All Applicable Price Codes' (un solo price code con ese período): "
+                  "se corta sin ella", flush=True)
+        elif not marcado:
             driver.execute_script(_JS_DLG + """
                 var l = dlg.querySelector('label[for="split-applicable"]');
                 if (l) { l.click(); } else { var c = dlg.querySelector('#split-applicable'); c.click(); }""")
