@@ -45,6 +45,10 @@ PERMITIR_PRODUCCION = os.environ.get("TOURPLAN_PERMITIR_PRODUCCION", "") == "1"
 ALLOT, TARIFA = "allotment", "tarifa"
 
 
+def log(msg):
+    print(msg, flush=True)
+
+
 class PedidoError(Exception):
     """El pedido no se puede procesar tal como está cargado (se informa, no se escribe nada)."""
 
@@ -94,25 +98,32 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
     from tourplan_flujos import allocations as fl
     lineas, errores = [], []
     cerrar = sin_fila = reales = 0
+    log(f"  ▶ Fase allocation · {len(elegidas)} allocation(es) · {len(fechas)} fecha(s) · "
+        f"{'APLICAR' if aplicar else 'lectura'}")
     try:
         fl.preparar_hotel(driver, codigo_hotel, hoy)
     except fl.FlujoError as e:
+        log(f"    ✖ no se pudo abrir el hotel {codigo_hotel}: {e}")
         return cola.formato_error(str(e)), ""
     for a in elegidas:
         chequear_abort()
+        log(f"    · allocation {a.codigo} ({a.descripcion})")
         try:
             acciones, obs = fl.cerrar_allocation(driver, a, codigo_hotel, fechas, aplicar=aplicar, hoy=hoy)
         except fl.FlujoError as e:
             tp.ss(driver, f"error_{a.codigo}")
             errores.append(f"{a.codigo}: {e}")
+            log(f"    ✖ {a.codigo}: {e}")
             continue
         if acciones is None:
             lineas.append(f"{a.codigo}: allocation vacía, nada que cerrar en allocation")
+            log(f"    ○ {a.codigo}: allocation vacía")
             continue
         reales += 1
         cerrar += sum(1 for x in acciones if x.tipo == plan.CERRAR)
         sin_fila += sum(1 for x in acciones if x.tipo == plan.SIN_FILA)
         lineas.append(plan.resumen(a.codigo, acciones, lectura=not aplicar) + (f" ({obs})" if obs else ""))
+        log(f"    ✔ {lineas[-1]}")
     texto = " | ".join(lineas)
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
@@ -157,23 +168,30 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
     from common import tourplan as tp
     from tourplan_flujos import allocations as fl
     from tourplan_flujos import rates as rt
+    log(f"  ▶ Fase tarifa · {'APLICAR' if aplicar else 'lectura'}")
     try:
         habs = habitaciones_a_cerrar(driver, codigo_hotel, elegidas)
     except (PedidoError, fl.FlujoError) as e:
+        log(f"    ✖ no se pudo definir qué habitaciones cerrar: {e}")
         return cola.formato_error(str(e)), ""
     if habs is None:
+        log("    ○ ninguna allocation del pedido cierra tarifa")
         return cola.ESTADO_SALTEADO, "no cierra tarifa"
+    log(f"    habitaciones a cerrar ({len(habs)}): {', '.join(habs)}")
     rangos = agrupar_rangos(fechas)
     lineas, errores, trabajo = [], [], 0
     for h in habs:
         chequear_abort()
+        log(f"    · habitación {h}")
         try:
             _, texto, n = rt.procesar_habitacion(driver, codigo_hotel, h, rangos, aplicar=aplicar)
         except (fl.FlujoError, rates_plan.PlanRatesError) as e:
             tp.ss(driver, f"error_{h}")
             errores.append(f"{h}: {e}")
+            log(f"    ✖ {h}: {e}")
             continue
         lineas.append(texto)
+        log(f"    ✔ {texto}")
         trabajo += n
     texto = " | ".join(lineas)
     if errores:
@@ -194,6 +212,8 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
     en_curso = set(fases) if aplicar else set()
 
     def cerrar_fase(fase, estado, obs):
+        log(f"  ■ Fase {fase}: {estado or '(lectura: solo observaciones)'}"
+            + (f" — {obs[:500]}" if obs else ""))
         if aplicar:
             cola.escribir_fase(ws, row, fase, estado, obs)
             en_curso.discard(fase)
@@ -205,6 +225,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
         try:
             codigo_hotel, elegidas, fechas, avisos = resolver_pedido(fila, allocs_registro, hoy)
         except PedidoError as e:
+            log(f"  ✖ pedido inválido: {e}")
             for f in fases:
                 cerrar_fase(f, cola.formato_error(str(e)), str(e))
             return
@@ -218,6 +239,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
         if TARIFA in fases:
             if resultado_allot and resultado_allot.startswith(cola.ESTADO_ERROR) and aplicar:
                 # no se avanza a tarifas si falló allotment: queda PENDIENTE para retomar
+                log("  ■ Fase tarifa: no se evalúa porque falló la fase de allocation (queda PENDIENTE)")
                 cola.escribir_fase(ws, row, TARIFA, cola.ESTADO_PENDIENTE, "no se evaluó: falló la fase de allocation")
                 en_curso.discard(TARIFA)
             else:
@@ -229,6 +251,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
             cola.escribir_fase(ws, row, f, cola.ESTADO_PENDIENTE, "abortado por el usuario: se puede retomar")
         raise
     except Exception as e:
+        log(f"  ✖ error inesperado: {e}")
         traceback.print_exc()
         for f in sorted(en_curso):
             cola.escribir_fase(ws, row, f, cola.formato_error(str(e)), "")

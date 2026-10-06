@@ -24,3 +24,7 @@
   - Validar en Test cómo se comporta la lista de rangos con varios cortes y qué pasa con el diálogo del
     período después de «OK».
   - Esto cambia la regla «un solo corte por diálogo» de la especificación: confirmar antes de implementarlo.
+
+## A confirmar en la próxima corrida en Test
+- [ ] Que ya no aparezca el aviso repetido de «dialog de carga seguía abierto». Si aparece, el log ahora
+  imprime el texto del dialog que lo causa (`⚠ Un dialog de carga seguía abierto tras esperar: [...]`).

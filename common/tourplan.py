@@ -137,16 +137,28 @@ def cerrar_nav_backdrop(driver, timeout=3, velocidad=1.0):
     print("    ⚠ .tpnavbackdrop seguía presente tras cerrar el menú — removido a mano")
 
 
+# <dialog open> abiertos que NO son un modal de Tourplan (los modales viven dentro de <tp-dialog>:
+# el diálogo de una allocation o de un período también puede ser un <dialog open> y no es "cargando").
+_JS_CARGANDO = """
+    return Array.from(document.querySelectorAll('dialog[open]'))
+        .filter(function(d){ return !d.closest('tp-dialog'); })
+        .map(function(d){ return (d.innerText || d.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 80); });
+"""
+
+
 def esperar_fin_carga(driver, timeout=15, velocidad=1.0):
     """Tourplan muestra un <dialog> nativo 'PLEASE WAIT...' mientras termina
     de procesar la fila anterior — esperar a que cierre antes de clickear la
-    lupa de búsqueda de la fila siguiente. Ver skill buscando-productos-en-tourplan."""
+    lupa de búsqueda de la fila siguiente. Ver skill buscando-productos-en-tourplan.
+    Solo cuenta los <dialog open> que no están dentro de un <tp-dialog> (un modal abierto,
+    como el de una allocation, no es una carga en curso). Si vence el tiempo, imprime
+    qué dialog quedó abierto para poder diagnosticarlo."""
     fin = time.time() + timeout * velocidad
     while time.time() < fin:
-        if not driver.find_elements(By.CSS_SELECTOR, "dialog[open]"):
+        if not driver.execute_script(_JS_CARGANDO):
             return
         time.sleep(0.3)
-    print("    ⚠ El dialog de carga ('PLEASE WAIT...') seguía abierto tras esperar")
+    print(f"    ⚠ Un dialog de carga seguía abierto tras esperar: {driver.execute_script(_JS_CARGANDO)}")
 
 
 # ── Fechas / formatos Tourplan ──────────────────────────────────────────

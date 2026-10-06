@@ -127,6 +127,7 @@ def cerrar_modal_productos(driver):
 def abrir_habitacion(driver, codigo_hotel, codigo_hab):
     """Supplier -> lupa del Product -> habitación exacta -> menú Rates -> grilla de períodos."""
     codigo_hab = codigo_hab.replace(" ", "").upper()
+    print(f"    → habitación {codigo_hab}: Product Find", flush=True)
     abrir_supplier(driver, codigo_hotel)
     _abrir_product_find(driver)
     recorrer_product_find(driver, objetivo=codigo_hab)
@@ -134,6 +135,7 @@ def abrir_habitacion(driver, codigo_hotel, codigo_hab):
 
 
 def abrir_menu_rates(driver):
+    print("    → menú Rates", flush=True)
     img = tp.wait(driver, "nav img")
     tp.jc(driver, img)
     tp.wait(driver, ".nav-menu")
@@ -444,7 +446,10 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
     abrir_habitacion(driver, codigo_hotel, cod_hab)
     hechas = cortes = 0
     for _ in range(max_iteraciones):
-        plan = rp.planear(leer_periodos(driver), rangos)
+        periodos = leer_periodos(driver)
+        plan = rp.planear(periodos, rangos)
+        print(f"    → grilla de Rates: {len(periodos)} fila(s); a editar {len(plan.ediciones)}, "
+              f"cortes pendientes {len(plan.cortes)}, ya cerradas {len(plan.ya_cerrados)}", flush=True)
         if plan.cortes and not aplicar:
             return plan, rp.resumen(cod_hab, plan, lectura=True), len(plan.cortes)
         if plan.cortes:
@@ -453,6 +458,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
+            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}", flush=True)
             hacer_corte(driver, cod_hab, candidato, c.fecha)
             cortes += 1
             continue
@@ -460,7 +466,10 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
             return plan, rp.resumen(cod_hab, plan, lectura=True), len(plan.ediciones)
         if not plan.ediciones:
             break
-        editar_periodo(driver, cod_hab, plan.ediciones[0])      # uno por vez: se relee la grilla después de cada guardado
+        e = plan.ediciones[0]
+        print(f"    → editando {e.periodo.ini:%d/%m/%Y}-{e.periodo.fin:%d/%m/%Y} {e.periodo.pc}: "
+              f"{e.periodo.status} → {e.nuevo_status}", flush=True)
+        editar_periodo(driver, cod_hab, e)      # uno por vez: se relee la grilla después de cada guardado
         hechas += 1
     else:
         raise FlujoError("Demasiadas iteraciones cortando/editando: se frena.")

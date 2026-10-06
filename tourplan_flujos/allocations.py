@@ -60,6 +60,7 @@ def abrir_supplier(driver, codigo_hotel):
     """Navega #/home -> #/product y elige el supplier por coincidencia EXACTA de td.code.
     Nunca Enter ni Tab (aceptan la primera sugerencia)."""
     codigo = codigo_hotel.strip()
+    print(f"    → hotel {codigo}: abriendo Product y eligiendo el supplier", flush=True)
     driver.get(f"{tp.BASE_URL}/#/home")
     time.sleep(2 * tp.VELOCIDAD)
     driver.get(f"{tp.BASE_URL}/#/product")
@@ -106,6 +107,7 @@ def abrir_supplier(driver, codigo_hotel):
 
 def abrir_menu_allocations(driver):
     """Hamburguesa -> ítem 'Allocations' elegido por TEXTO (no por posición)."""
+    print("    → menú Allocations", flush=True)
     img = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "nav img")))
     tp.jc(driver, img)
     tp.wait(driver, ".nav-menu")
@@ -131,6 +133,7 @@ _GRUPO_FILTRO = "tp-supplier-allocations tp-group.tpgroup-allocationsfilter"
 def filtrar_hasta(driver, hoy):
     """Abre el filtro, pone 'hasta' = hoy + 2 años (verificando el valor real que entendió
     Tourplan), deja Show Archived sin tildar y filtra."""
+    print("    → filtro de la lista de allocations (hasta hoy + 2 años)", flush=True)
     grupo = tp.wait(driver, _GRUPO_FILTRO)
     if "tpcollapsed" in (grupo.get_attribute("class") or ""):
         tp.jc(driver, grupo.find_element(By.CSS_SELECTOR, ".legend i"))  # es un interruptor
@@ -172,6 +175,7 @@ def filtrar_hasta(driver, hoy):
 def abrir_allocation(driver, codigo, descripcion):
     """Clic en la fila cuyo Name y Description coinciden EXACTO con el registro
     (recortando y normalizando espacios, sin distinguir mayúsculas). 0 o >1 = error."""
+    print(f"    → abriendo la allocation {codigo!r} / {descripcion!r}", flush=True)
     cantidad = driver.execute_script("""
         var nombre = arguments[0], desc = arguments[1];
         var norm = function(s){ return (s || '').replace(/\\s+/g, ' ').trim().toLowerCase(); };
@@ -429,6 +433,7 @@ def filtrar_dias_hasta(driver, hasta, hoy=None):
     except ValueError:
         tope = hoy.replace(year=hoy.year + WINDOW_YEARS, day=28)
     hasta = min(hasta, tope)
+    print(f"    → ampliando 'Date To' de la grilla de días hasta {hasta:%d/%m/%Y}", flush=True)
     actual = driver.execute_script(_JS_DLG + """
         var h = dlg.querySelector('#days-tab tp-date#dateto input.tphidden'); return h ? h.value : null;""")
     if actual is not None and _fecha_tp(actual) is not None and _fecha_tp(actual) >= hasta:
@@ -502,6 +507,7 @@ def aplicar_dias(driver, acciones, fechas_hasta=None):
             if (fresca.tipo, fresca.nuevo_max, fresca.nuevo_release) != (a.tipo, a.nuevo_max, a.nuevo_release):
                 raise FlujoError(f"{a.fecha:%d/%m/%Y}: cambió desde la lectura ({dia}); se frena.")
             pl.verificar_no_reabre(dia, fresca)
+            print(f"    → escribiendo {a.fecha:%d/%m/%Y}: Max={a.nuevo_max} Release={a.nuevo_release}", flush=True)
             campos = _inputs_de_fecha(driver, a.fecha)
             if not campos or not campos[0] or not campos[1]:
                 raise FlujoError(f"{a.fecha:%d/%m/%Y}: no pude ubicar Max/Release por la etiqueta de fecha.")
@@ -519,6 +525,7 @@ def aplicar_dias(driver, acciones, fechas_hasta=None):
             hechas.append(a)
         if not hechas:
             return []
+        print(f"    → guardando ({len(hechas)} fecha(s) modificadas)", flush=True)
         if not _esperar_save(driver, True):
             raise FlujoError("El botón Save no se habilitó tras escribir.")
         driver.execute_script(_JS_DLG + """
@@ -556,8 +563,10 @@ def cerrar_allocation(driver, alloc, codigo_hotel, fechas, aplicar=False, hoy=No
             raise FlujoError(obs)
         verificar_columnas_dias(driver)
         filtrar_dias_hasta(driver, max(fechas), hoy)
+        print(f"    → leyendo {len(set(fechas))} fecha(s) de la grilla", flush=True)
         dias = leer_dias(driver, fechas)
         acciones = pl.planear(dias, fechas)
+        print("    → plan: " + ", ".join(f"{a.fecha:%d/%m} {a.tipo}" for a in acciones), flush=True)
         if aplicar:
             aplicar_dias(driver, acciones)
         return acciones, obs

@@ -241,3 +241,23 @@ def test_show_release_as_date_tildado_frena(drv):
 def test_exit_cierra_dialogo(drv):  # va al final: borra el diálogo simulado
     fl.cerrar_dialogo(drv)
     assert drv.find_elements(None, "body > tp-dialog") == []
+
+
+def test_esperar_fin_carga_ignora_el_modal_y_espera_un_please_wait_real(drv, capsys):
+    """Regresión: el diálogo de una allocation puede ser un <dialog open> dentro de <tp-dialog>
+    y no debe contarse como 'cargando' (hacía esperar 15 s en cada paso). Va al final: reemplaza la página."""
+    import time
+    from common import tourplan as tp
+    pg = drv.page
+    pg.set_content("<tp-dialog><dialog open>Allocation Detail</dialog></tp-dialog>")
+    t = time.time()
+    tp.esperar_fin_carga(drv, timeout=15, velocidad=0.2)
+    assert time.time() - t < 1 and "seguía abierto" not in capsys.readouterr().out
+    # un PLEASE WAIT real (fuera de tp-dialog) sí se espera, y se informa si no cierra
+    pg.evaluate("() => { const x = document.createElement('dialog'); x.setAttribute('open',''); x.textContent = 'PLEASE WAIT...'; document.body.appendChild(x); }")
+    tp.esperar_fin_carga(drv, timeout=3, velocidad=0.2)
+    assert "PLEASE WAIT" in capsys.readouterr().out
+    pg.evaluate("() => document.querySelector('body > dialog').remove()")
+    t = time.time()
+    tp.esperar_fin_carga(drv, timeout=3, velocidad=0.2)
+    assert time.time() - t < 1
