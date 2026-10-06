@@ -230,3 +230,23 @@ def test_sin_rangos_o_con_escaneo_completo_lee_todo(drv_virtual, monkeypatch):
     monkeypatch.setattr(rp, "MESES_MARGEN", 1)
     monkeypatch.setenv("TOURPLAN_RATES_ESCANEO_COMPLETO", "1")
     assert len(rt.leer_periodos(drv_virtual, [(date(2026, 11, 25), date(2026, 11, 27))])) == 60
+
+
+def test_terminal_y_provisional_se_editan_segun_las_reglas(drv):
+    drv.page.evaluate("""() => { const s = document.querySelectorAll('#tb .tpcol-ratestatuses');
+        s[0].textContent = 'Terminal'; s[1].textContent = 'Provisional'; }""")   # TR Terminal, RACK Provisional
+    rangos = [(date(2026, 12, 1), date(2026, 12, 25))]
+    plan = rp.planear(rt.leer_periodos(drv, rangos), rangos)
+    assert {(e.periodo.pc, e.nuevo_status) for e in plan.ediciones} == {("TR", "Closed"), ("RACK", "Closed")}
+    for e in plan.ediciones:
+        rt.editar_periodo(drv, HAB, e)
+    assert [p.status for p in rt.leer_periodos(drv, rangos)] == ["Closed", "Closed", "Closed"]
+
+
+def test_provisional_de_price_code_manual_pasa_a_manual(drv):
+    drv.page.evaluate("() => { document.querySelectorAll('#tb .tpcol-ratestatuses')[0].textContent = 'Provisional'; }")
+    rangos = [(date(2026, 12, 1), date(2026, 12, 25))]
+    e = next(e for e in rp.planear(rt.leer_periodos(drv, rangos), rangos).ediciones if e.periodo.pc == "TR")
+    assert e.nuevo_status == "Manual"
+    rt.editar_periodo(drv, HAB, e)
+    assert rt.leer_periodos(drv, rangos)[0].status == "Manual"

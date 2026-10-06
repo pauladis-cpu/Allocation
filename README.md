@@ -30,6 +30,14 @@ Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecut
   cierra las fechas en la allocation y después las tarifas, y deja `OK` / `SALTEADO` / `ERROR: detalle`
   por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
 
+**Reglas de tarifas (actualizan la especificación original):**
+- Status objetivo: Manual para TR, ND y EM; Closed para el resto.
+- Confirmed y **Provisional** pasan al objetivo. **Terminal** pasa a Closed sin importar el price code.
+- Closed se saltea y **nunca** pasa a Manual. Manual pasa a Closed salvo en TR, ND y EM.
+- El price code **FX nunca se toca**: ni se edita ni se corta su período (si comparte el período con otros
+  price codes, se corta cada uno por separado sin «Split All Applicable Price Codes»).
+- Se sigue frenando el pedido si el status de la grilla es ambiguo o el Rate Name no es `Standard`.
+
 **Producción:** el modo aplicar se niega a escribir en Producción salvo que, en la Configuración, el
 entorno sea Producción **y** esté tildada la autorización explícita. Por defecto está destildada.
 

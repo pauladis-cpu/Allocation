@@ -7,15 +7,15 @@
   :root { --fg:#1c2330; --mut:#7a8190; --bd:#dfe3e8; --acc:#1d5bbf; --dis:#c3c8d1; --hoy:#f5a623; --tarde:#e08a00; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:"IBM Plex Sans", system-ui, sans-serif; color:var(--fg); background:transparent; user-select:none; }
-  .nav { display:flex; justify-content:flex-end; gap:6px; margin-bottom:4px; }
+  .nav { display:flex; justify-content:flex-end; gap:6px; margin-bottom:2px; }
   .nav button { border:1px solid var(--bd); background:#fff; color:var(--fg); border-radius:8px; padding:2px 12px; cursor:pointer; font-size:14px; }
   .nav button:disabled { opacity:.35; cursor:default; }
-  .meses { display:flex; flex-wrap:wrap; gap:20px; }
+  .meses { display:flex; flex-wrap:wrap; gap:16px; }
   .mes { flex:1 1 0; min-width:190px; }
-  .mes h4 { margin:0 0 6px; font-size:16px; font-weight:600; }
+  .mes h4 { margin:0 0 4px; font-size:16px; font-weight:600; }
   .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
   .dow { font-size:12px; color:var(--mut); text-align:center; padding:2px 0; }
-  .d { position:relative; aspect-ratio:1/1; max-height:34px; display:flex; align-items:center; justify-content:center;
+  .d { position:relative; aspect-ratio:1/1; max-height:30px; display:flex; align-items:center; justify-content:center;
        font-size:14px; border:1px solid var(--bd); border-radius:7px; background:#fff; cursor:pointer; }
   .d:hover:not(.dis):not(.sel) { background:#e8f0fc; }
   .d.hoy { border-color:var(--hoy); }
@@ -23,7 +23,7 @@
   .d.dis { color:var(--dis); background:#f6f7f9; cursor:default; }
   .d.vacio { border:none; background:transparent; cursor:default; }
   .d.tarde::after { content:""; position:absolute; right:3px; top:3px; width:6px; height:6px; border-radius:50%; background:var(--tarde); }
-  .leyenda { display:flex; flex-wrap:wrap; gap:18px; margin-top:12px; font-size:13px; color:var(--mut); align-items:center; }
+  .leyenda { display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; font-size:13px; color:var(--mut); align-items:center; }
   .leyenda i { display:inline-block; width:14px; height:14px; border-radius:4px; vertical-align:-2px; margin-right:6px; border:1px solid var(--bd); background:#fff; }
   .leyenda i.a { background:var(--acc); border-color:var(--acc); }
   .leyenda i.p { background:#f6f7f9; }

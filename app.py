@@ -77,7 +77,7 @@ CSS = """
 [data-testid="stToolbar"], [data-testid="stDecoration"] { display:none !important; }
 .stApp, .stApp p, .stApp label, .stApp input, .stApp button, .stApp textarea,
 .stApp [data-testid="stMarkdownContainer"] { font-family:'IBM Plex Sans', system-ui, sans-serif; }
-.block-container, [data-testid="stMainBlockContainer"] { max-width:100% !important; padding:0 0 3rem 0 !important; }
+.block-container, [data-testid="stMainBlockContainer"] { max-width:100% !important; padding:0 0 .4rem 0 !important; }
 .stMain, [data-testid="stMain"], [data-testid="stAppViewContainer"] > section { padding-top:0 !important; }
 /* los bloques <style> no ocupan espacio; el HTML crudo recupera el margen que Streamlit le resta */
 [data-testid="stElementContainer"]:has(style) { display:none !important; }
@@ -86,6 +86,12 @@ CSS = """
 [data-testid="stMarkdownContainer"] > div.alloc-txt, [data-testid="stMarkdownContainer"] > div.res { margin-bottom:1rem; }
 .mono, code, .stApp input.mono { font-family:'IBM Plex Mono', ui-monospace, monospace !important; }
 
+/* ventanas bajas (o navegador con zoom/escala): se reduce todo para que no haya scroll vertical */
+@media (max-height: 860px) { [data-testid="stMainBlockContainer"] { zoom: .9; } }
+@media (max-height: 780px) { [data-testid="stMainBlockContainer"] { zoom: .8; } }
+@media (max-height: 700px) { [data-testid="stMainBlockContainer"] { zoom: .72; } }
+@media (max-height: 620px) { [data-testid="stMainBlockContainer"] { zoom: .64; } }
+
 /* barra superior */
 .st-key-topbar { background:#fff; border-bottom:1px solid var(--bd); padding:0 3vw; min-height:60px; display:flex; flex-direction:column; justify-content:center; }
 .st-key-topbar [data-testid="stHorizontalBlock"] { align-items:center; gap:.4rem; }
@@ -93,30 +99,31 @@ CSS = """
 .st-key-topbar button { border-radius:8px; font-weight:500; padding:.35rem 1rem; }
 .st-key-topbar [data-testid="stBaseButton-primary"] { background:var(--acc-bg); color:var(--acc); border:none; box-shadow:none; }
 .st-key-topbar [data-testid="stBaseButton-tertiary"] { color:#374151; }
-.st-key-page { padding:22px 3vw 0 3vw; }
+.st-key-page { padding:12px 3vw 0 3vw; gap:.6rem; }
 .entorno { font-size:.78rem; font-weight:600; padding:.2rem .6rem; border-radius:999px; background:#eceef1; color:#4b5563; }
 .entorno.prod { background:#fde8e8; color:#9b1c1c; }
 
 /* tarjetas */
-[class*="st-key-card"] { background:#fff; border:1px solid var(--bd) !important; border-radius:14px; padding:.9rem 1.1rem; }
-[class*="st-key-card"] [data-testid="stVerticalBlock"] { gap:.55rem; }
-.st-key-card_ficha { min-height:560px; }
+[class*="st-key-card"] { background:#fff; border:1px solid var(--bd) !important; border-radius:14px; padding:.65rem 1rem; }
+[class*="st-key-card"] [data-testid="stVerticalBlock"] { gap:.35rem; }
+.st-key-card_ficha { min-height:380px; }
 .etiqueta-seccion { font-size:.75rem; letter-spacing:.06em; text-transform:uppercase; color:var(--mut); font-weight:600; }
-.ayuda { color:var(--mut); font-size:.85rem; line-height:1.35; }
+.ayuda { color:var(--mut); font-size:.8rem; line-height:1.3; }
 .ayuda code { font-size:.8rem; }
 
 /* indicador de pasos */
-.pasos { display:flex; align-items:center; gap:14px; margin:4px 0 22px 0; font-size:1.02rem; }
+.pasos { display:flex; align-items:center; gap:12px; margin:0 0 6px 0; font-size:.98rem; }
 .pasos .p { display:flex; align-items:center; gap:10px; color:var(--mut); }
-.pasos .n { width:34px; height:34px; border-radius:50%; border:1.5px solid #c9ced6; display:flex; align-items:center; justify-content:center; font-weight:600; background:#fff; }
+.pasos .n { width:30px; height:30px; border-radius:50%; border:1.5px solid #c9ced6; display:flex; align-items:center; justify-content:center; font-weight:600; background:#fff; }
 .pasos .p.act { color:var(--acc); font-weight:600; } .pasos .p.act .n { background:var(--acc); color:#fff; border-color:var(--acc); }
 .pasos .p.ok { color:var(--ok); font-weight:600; } .pasos .p.ok .n { background:var(--ok); color:#fff; border-color:var(--ok); }
 .pasos .linea { width:54px; height:1.5px; background:#c9ced6; }
 
 /* paso 1: resultados y ficha */
 [class*="st-key-res_"] { position:relative; }
+[class*="st-key-res_"] [data-testid="stElementContainer"]:has(button) { position:absolute; inset:0; margin:0; }
 [class*="st-key-res_"] button { position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }
-.res { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:.8rem 1.1rem; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.res { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:.55rem 1rem; display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .res.sel { border:2px solid var(--acc); }
 .res .nom { font-weight:600; font-size:1.02rem; } .res .met { color:var(--mut); font-size:.88rem; }
 .tag { font-size:.82rem; font-weight:600; padding:.18rem .65rem; border-radius:999px; white-space:nowrap; }
@@ -124,9 +131,9 @@ CSS = """
 .noreg { background:#fdeeee; border:1px solid #f3c9c9; border-radius:12px; padding:.9rem 1.1rem; color:#7f1d1d; }
 .noreg b { display:block; margin-bottom:.2rem; font-size:1.02rem; }
 .ficha-cab { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--bd); padding-bottom:.8rem; margin-bottom:.4rem; }
-.ficha-cab .nom { font-size:1.55rem; font-weight:600; line-height:1.2; }
+.ficha-cab .nom { font-size:1.35rem; font-weight:600; line-height:1.2; }
 .ficha-cab .cod { color:var(--mut); font-family:'IBM Plex Mono', monospace; }
-.mini { border:1px solid var(--bd); border-radius:12px; padding:.75rem 1rem; margin-bottom:.6rem; line-height:1.55; }
+.mini { border:1px solid var(--bd); border-radius:12px; padding:.5rem .9rem; margin-bottom:.45rem; line-height:1.4; }
 .mini .t { font-weight:600; font-size:1.02rem; }
 .mini .m { font-family:'IBM Plex Mono', monospace; color:var(--mut); font-size:.85rem; }
 
@@ -137,10 +144,10 @@ CSS = """
 .alloc-txt .t { font-weight:600; line-height:1.3; } .alloc-txt .m { color:var(--mut); font-size:.88rem; line-height:1.4; }
 
 /* paso 3 */
-.resumen { display:grid; grid-template-columns:150px 1fr; row-gap:.75rem; align-items:baseline; }
+.resumen { display:grid; grid-template-columns:150px 1fr; row-gap:.45rem; align-items:baseline; }
 .resumen .k { color:var(--mut); }
 .rango { display:inline-block; background:var(--acc-bg); color:var(--acc); font-family:'IBM Plex Mono', monospace; font-size:.9rem; border-radius:8px; padding:.2rem .6rem; margin:0 .4rem .3rem 0; }
-.paso-n { display:flex; gap:.8rem; margin:.6rem 0; line-height:1.5; }
+.paso-n { display:flex; gap:.7rem; margin:.35rem 0; line-height:1.4; }
 .paso-n .num { flex:0 0 28px; height:28px; border-radius:50%; background:#eceef1; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:.85rem; }
 .aviso-ambar { background:#fdf0d5; color:#6b4500; border-radius:10px; padding:.8rem 1rem; }
 .st-key-modo_pedido [data-testid="stBaseButton-segmented_control"], .st-key-modo_pedido [data-testid="stBaseButton-segmented_controlActive"] { font-family:'IBM Plex Mono', monospace; }
@@ -151,7 +158,7 @@ CSS = """
 .st-key-cola_tabla { margin-top:.9rem; background:#fff; border:1px solid var(--bd); border-radius:14px; overflow-x:auto; }
 table.cola { width:100%; border-collapse:collapse; font-size:.93rem; }
 table.cola th { background:#f6f7f9; text-align:left; padding:.8rem 1rem; font-weight:600; border-bottom:1px solid var(--bd); white-space:nowrap; }
-table.cola td { padding:.8rem 1rem; border-bottom:1px solid #eef0f2; vertical-align:top; }
+table.cola td { padding:.6rem 1rem; border-bottom:1px solid #eef0f2; vertical-align:top; }
 table.cola tr:last-child td { border-bottom:none; }
 table.cola .id, table.cola .modo { font-family:'IBM Plex Mono', monospace; } table.cola .id { color:var(--mut); }
 table.cola .hotel { font-weight:600; } table.cola .obs { max-width:420px; color:#374151; } table.cola .na { color:#9ca3af; }
@@ -589,8 +596,9 @@ def _paso_tarifa_html(elegidas):
             alcance.append(f"las habitaciones {a.tarifas}")
     unicos = list(dict.fromkeys(alcance))
     return ("<b>Tarifa convenio.</b> Cierra la tarifa de " + esc(" y de ".join(unicos)) + ", con un período por "
-            "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto. Lo que ya está "
-            "cerrado se saltea, y un período en Closed nunca pasa a Manual.")
+            "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto (un período Terminal pasa a "
+            "Closed sin importar el price code). Lo que ya está cerrado se saltea, un período en Closed nunca pasa "
+            "a Manual y el price code FX no se toca.")
 
 
 def render_revisar():

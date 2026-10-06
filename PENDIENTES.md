@@ -1,11 +1,5 @@
 # Pendientes
 
-## Interfaz
-- [ ] **Eliminar el scroll de la pantalla ajustando el tamaño.** Hoy el contenido de cada paso (por ejemplo la
-  tarjeta «Ficha del registro» en el paso 1) es más alto que la ventana y aparece la barra de scroll vertical.
-  Ajustar alturas y espacios para que cada pantalla entre sin scroll en una ventana de escritorio típica.
-  (Detectado probando la app; captura del paso 1 con la barra de scroll a la derecha.)
-
 ## Por validar en Tourplan de prueba (código hecho, sin probar contra Tourplan real)
 - [ ] Aplicar allocations (escritura de Max/Release, Save, relectura).
 - [ ] Rates: Product Find, menú Rates, grilla de períodos, split, edición de período.
@@ -33,3 +27,12 @@
 - [ ] Lista de allocations del hotel (`tp-grid[tpid="allocations-grid"]`): hoy se busca solo entre las filas renderizadas.
 - [ ] Grilla de tarifas del período (`#tabs-rates #costs-panel`): hoy se asume que las 5 filas (Twin/Double, Single,
   Additional Adult, Child, Infant) están todas en el DOM.
+
+## Hecho (para no perderlo de vista)
+- [x] Sin scroll vertical en las pantallas (tamaños compactos y escala automática según el alto de la ventana).
+- [x] Reglas de tarifas actualizadas (ver README): Provisional como Confirmed, Terminal a Closed, FX nunca se toca.
+
+## Validar en Test: reglas nuevas de tarifas
+- [ ] Un período Provisional (TR/ND/EM a Manual, otros a Closed) y uno Terminal (a Closed) con el pedido real.
+- [ ] Hotel con price code FX que comparte el período: el corte se hace destildando «Split All Applicable Price Codes»
+  (un corte por cada price code) y el período de FX queda intacto.

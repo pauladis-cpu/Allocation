@@ -323,8 +323,11 @@ def verificar_titulo_periodo(driver, cod_largo, periodo):
 
 # ── 6.5: un corte (split) ───────────────────────────────────────────────────
 
-def hacer_corte(driver, cod_largo, periodo, fecha_corte):
-    """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo."""
+def hacer_corte(driver, cod_largo, periodo, fecha_corte, aplicar_a_todos=True):
+    """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo.
+    aplicar_a_todos=True deja tildado 'Split All Applicable Price Codes' (corta todos los price codes con
+    exactamente ese período); False lo destilda, para cortar SOLO el price code abierto (cuando otro price
+    code, como FX, comparte el período y no debe tocarse)."""
     _clic_fila(driver, periodo)
     try:
         verificar_titulo_periodo(driver, cod_largo, periodo)
@@ -346,15 +349,17 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte):
             var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return i ? !!i.checked : null;""")
         if marcado is None:
             raise FlujoError("No encontré la casilla 'Split All Applicable Price Codes'.")
-        if not marcado:
+        if bool(marcado) != bool(aplicar_a_todos):
             driver.execute_script(_JS_DLG + """
                 var l = dlg.querySelector('label[for="split-applicable"]');
                 if (l) { l.click(); } else { var c = dlg.querySelector('#split-applicable'); c.click(); }""")
             time.sleep(0.5 * tp.VELOCIDAD)
-            if not driver.execute_script(_JS_DLG + """
+            ahora = driver.execute_script(_JS_DLG + """
                 var c = dlg.querySelector('#split-applicable');
-                var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return !!(i && i.checked);"""):
-                raise FlujoError("No pude tildar 'Split All Applicable Price Codes'.")
+                var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return !!(i && i.checked);""")
+            if bool(ahora) != bool(aplicar_a_todos):
+                raise FlujoError("No pude dejar 'Split All Applicable Price Codes' como se necesita "
+                                 f"({'tildado' if aplicar_a_todos else 'destildado'}).")
         inp = driver.execute_script(_JS_DLG + "return dlg.querySelector('input.tpdate-productdatesplitpoint');")
         if inp is None:
             raise FlujoError("No encontré el campo de fecha de corte.")
@@ -550,8 +555,10 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
-            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}", flush=True)
-            hacer_corte(driver, cod_hab, candidato, c.fecha)
+            solo_este = rp.corte_afecta_a_intocables(periodos, c)
+            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}"
+                  + (f" (solo {candidato.pc}: hay {rp.PRICE_CODE_INTOCABLE} con el mismo período)" if solo_este else ""), flush=True)
+            hacer_corte(driver, cod_hab, candidato, c.fecha, aplicar_a_todos=not solo_este)
             cortes += 1
             continue
         if not aplicar:

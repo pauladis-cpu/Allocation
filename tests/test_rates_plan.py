@@ -65,11 +65,49 @@ def test_closed_nunca_pasa_a_manual():
     r.verificar_no_pasa_de_closed_a_manual("Manual", "Closed")
 
 
-@pytest.mark.parametrize("st", ["Provisional", "Terminal"])
-def test_provisional_y_terminal_frenan(st):
-    g = [P(D(2026, 12, 1), D(2026, 12, 25), "TR", st)]
-    with pytest.raises(r.PlanRatesError):
-        r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
+def test_provisional_se_procesa_como_confirmed():
+    assert r.decidir_status("Provisional", "TR") == "Manual"
+    assert r.decidir_status("Provisional", "ND") == "Manual"
+    assert r.decidir_status("Provisional", "EM") == "Manual"
+    assert r.decidir_status("Provisional", "RACK") == "Closed"
+
+
+def test_terminal_pasa_a_closed_sin_importar_el_price_code():
+    for pc in ("TR", "ND", "EM", "RACK", "X"):
+        assert r.decidir_status("Terminal", pc) == "Closed"
+
+
+def test_fx_nunca_se_toca():
+    for st in ("Confirmed", "Provisional", "Terminal", "Manual", "Closed"):
+        assert r.decidir_status(st, "FX") is None
+        assert r.decidir_status(st, "fx") is None
+    # ni siquiera se valida su status/rate name: no se evalúa
+    g = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Raro Estado", "Promo"),
+         P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Terminal")]
+    plan = r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
+    assert [p.pc for p in plan.intocables] == ["FX"]
+    assert all(c.fecha not in () for c in plan.cortes)                      # hay cortes por TR, no por FX
+    assert {e.periodo.pc for e in plan.ediciones} <= {"TR"}
+
+
+def test_fx_solo_no_genera_cortes_ni_ediciones():
+    g = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Confirmed")]
+    plan = r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
+    assert plan.cortes == [] and plan.ediciones == [] and len(plan.intocables) == 1
+    assert plan.sin_periodo == []                                           # el período existe aunque no se toque
+
+
+def test_el_split_no_puede_cortar_el_periodo_de_fx():
+    g = [P(D(2026, 12, 1), D(2026, 12, 25), "FX", "Confirmed"), P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Confirmed"),
+         P(D(2027, 1, 1), D(2027, 1, 31), "TR", "Confirmed")]
+    corte = r.Corte(D(2026, 12, 1), D(2026, 12, 25), D(2026, 12, 10))
+    assert r.corte_afecta_a_intocables(g, corte)                            # FX comparte el período: split individual
+    assert not r.corte_afecta_a_intocables(g, r.Corte(D(2027, 1, 1), D(2027, 1, 31), D(2027, 1, 10)))
+
+
+def test_resumen_informa_fx():
+    g = [P(D(2026, 12, 10), D(2026, 12, 12), "FX", "Confirmed"), P(D(2026, 12, 10), D(2026, 12, 12), "TR", "Manual")]
+    assert "FX sin tocar 1" in r.resumen("HAB", r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))]))
 
 
 def test_fuera_del_rango_no_frena():

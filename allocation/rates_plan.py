@@ -6,7 +6,9 @@ Reglas:
   - Una fila de la grilla es un par (período, price code).
   - Status objetivo: Manual para TR/ND/EM, Closed para el resto.
   - Closed -> se saltea. Manual -> se saltea si el objetivo es Manual, si no pasa a Closed.
-    Confirmed -> pasa al objetivo. Provisional/Terminal -> frenar.
+    Confirmed y Provisional -> pasan al objetivo (TR/ND/EM a Manual, el resto a Closed).
+    Terminal -> pasa a Closed sin importar el price code.
+  - El price code FX NUNCA se toca: ni se edita ni se corta su período.
   - Un período en Closed NUNCA pasa a Manual (dos barreras: acá y justo antes del clic).
   - Un período por rango consecutivo. No se fusionan períodos existentes.
   - Solo se parte donde el borde del rango cae ADENTRO del período.
@@ -21,6 +23,7 @@ from allocation.constantes import PRICE_CODES_MANUAL
 CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL = "Confirmed", "Provisional", "Terminal", "Closed", "Manual"
 STATUS_CONOCIDOS = {s.casefold(): s for s in (CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL)}
 RATE_NAME_ESPERADO = "standard"
+PRICE_CODE_INTOCABLE = "FX"   # nunca se hacen cambios en sus períodos
 
 
 class PlanRatesError(Exception):
@@ -54,6 +57,7 @@ class Plan:
     cortes: list = field(default_factory=list)
     ediciones: list = field(default_factory=list)
     ya_cerrados: list = field(default_factory=list)   # filas que se saltean (ya cerradas)
+    intocables: list = field(default_factory=list)    # filas del price code FX: nunca se tocan
     sin_periodo: list = field(default_factory=list)   # fechas del pedido que ningún período cubre
 
 
@@ -70,17 +74,28 @@ def status_objetivo(pc):
     return MANUAL if (pc or "").strip().upper() in PRICE_CODES_MANUAL else CLOSED
 
 
+def es_intocable(pc):
+    return (pc or "").strip().upper() == PRICE_CODE_INTOCABLE
+
+
 def decidir_status(actual, pc):
-    """None = ya cerrado (se saltea); si no, el status al que hay que pasar."""
-    if actual == CLOSED:
+    """None = no hay que cambiar nada (ya cerrado, o price code FX); si no, el status al que hay que pasar."""
+    if es_intocable(pc) or actual == CLOSED:
         return None
+    if actual == TERMINAL:
+        return CLOSED                      # Terminal -> Closed, sin importar el price code
     objetivo = status_objetivo(pc)
     if actual == MANUAL:
         return None if objetivo == MANUAL else CLOSED
-    if actual == CONFIRMED:
+    if actual in (CONFIRMED, PROVISIONAL):
         return objetivo
-    raise PlanRatesError(
-        f"Un período está en {actual} (price code {pc}): se frena el pedido, revisar a mano.")
+    raise PlanRatesError(f"Status {actual!r} no contemplado (price code {pc}): se frena el pedido, revisar a mano.")
+
+
+def corte_afecta_a_intocables(periodos, corte):
+    """True si alguna fila FX tiene exactamente el mismo período que se va a cortar. En ese caso el corte
+    NO puede hacerse con 'Split All Applicable Price Codes' (cortaría también el período de FX)."""
+    return any(es_intocable(p.pc) and (p.ini, p.fin) == (corte.ini, corte.fin) for p in periodos)
 
 
 def verificar_no_pasa_de_closed_a_manual(actual, nuevo):
@@ -103,6 +118,9 @@ def planear(periodos, rangos):
     for p in periodos:
         solapados = [(a, b) for a, b in rangos if _solapa(p, a, b)]
         if not solapados:
+            continue
+        if es_intocable(p.pc):
+            plan.intocables.append(p)          # FX: no se evalúa ni se toca
             continue
         if p.rate_name.strip().casefold() != RATE_NAME_ESPERADO:
             raise PlanRatesError(
@@ -180,6 +198,8 @@ def resumen(codigo_largo, plan, lectura=True):
         partes.append(f"requiere {len(plan.cortes)} corte(s) previos (" + ", ".join(
             f"{c.fecha:%d/%m/%y}" for c in plan.cortes) + ")")
     partes.append(f"ya cerrados {len(plan.ya_cerrados)}")
+    if plan.intocables:
+        partes.append(f"{PRICE_CODE_INTOCABLE} sin tocar {len(plan.intocables)}")
     if plan.sin_periodo:
         from allocation.plan import _rangos_txt
         partes.append(f"SIN PERÍODO en Rates: {_rangos_txt(plan.sin_periodo)}")
