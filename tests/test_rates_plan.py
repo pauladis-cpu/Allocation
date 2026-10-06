@@ -99,24 +99,38 @@ def test_periodo_que_cubre_dos_rangos_disjuntos():
     assert [c.fecha for c in plan.cortes] == [D(2026, 12, 5), D(2026, 12, 7), D(2026, 12, 10), D(2026, 12, 12)]
 
 
-def _per(*dias, pc="TR"):
-    return [P(D(2026, 10, d), D(2026, 10, d), pc, "Confirmed") for d in dias]
+def test_restar_meses():
+    assert r.restar_meses(D(2026, 10, 1), 5) == D(2026, 5, 1)
+    assert r.restar_meses(D(2026, 3, 31), 1) == D(2026, 2, 28)         # el día no existe: último día del mes
+    assert r.restar_meses(D(2026, 2, 15), 5) == D(2025, 9, 15)         # cruza el año
 
 
-def test_direccion_del_orden():
-    assert r.direccion_orden(_per(1, 2, 3)) == "asc"
-    assert r.direccion_orden(_per(9, 7, 5)) == "desc"
-    assert r.direccion_orden(_per(1, 2)) is None                      # pocos períodos para decidir
-    assert r.direccion_orden(_per(1, 5, 3)) is None                   # sin orden claro
-    # varios price codes del mismo período seguidos no cuentan como períodos distintos
-    assert r.direccion_orden(_per(1, 1, 2, 2, 3, 3)) == "asc"
+def test_limite_de_lectura_es_la_mas_antigua_entre_el_rango_y_el_margen():
+    assert r.limite_de_lectura([(D(2026, 10, 1), D(2026, 10, 1))]) == D(2026, 5, 1)            # el ejemplo: mayo 2026
+    assert r.limite_de_lectura([(D(2026, 1, 10), D(2026, 10, 1))]) == D(2026, 1, 10)           # el rango pedido llega más atrás
 
 
-def test_ya_paso_el_objetivo_ascendente_y_descendente():
-    rangos = [(D(2026, 10, 10), D(2026, 10, 12))]
-    assert not r.ya_paso_el_objetivo(_per(1, 5, 11), rangos)           # todavía dentro del rango
-    assert r.ya_paso_el_objetivo(_per(1, 5, 13), rangos)               # asc: ya pasó 12/10
-    assert not r.ya_paso_el_objetivo(_per(20, 15, 11), rangos)
-    assert r.ya_paso_el_objetivo(_per(20, 15, 9), rangos)              # desc: ya pasó 10/10 hacia atrás
-    assert not r.ya_paso_el_objetivo(_per(1, 20, 5), rangos)           # sin orden claro: no corta
-    assert not r.ya_paso_el_objetivo(_per(20, 15, 9), [])
+def test_corta_cuando_aparece_un_periodo_de_cinco_meses_antes():
+    rangos = [(D(2026, 10, 1), D(2026, 10, 1))]
+    # grilla de más lejana a más reciente (desc): 2027 ... hacia 2026
+    desc = [P(D(2027, 4, 1), D(2027, 4, 30), "TR", "Confirmed"), P(D(2026, 12, 1), D(2026, 12, 31), "TR", "Confirmed"),
+            P(D(2026, 10, 1), D(2026, 10, 31), "TR", "Confirmed"), P(D(2026, 8, 1), D(2026, 8, 31), "TR", "Confirmed")]
+    assert not r.ya_paso_el_objetivo(desc, rangos)                       # llegó a agosto: todavía falta (mayo)
+    desc.append(P(D(2026, 5, 1), D(2026, 5, 31), "TR", "Confirmed"))
+    assert r.ya_paso_el_objetivo(desc, rangos)                           # apareció un período de mayo 2026
+    assert not r.ya_paso_el_objetivo(desc, [])
+
+
+def test_price_codes_con_cortes_distintos_no_cortan_antes_de_tiempo():
+    rangos = [(D(2026, 10, 1), D(2026, 10, 1))]
+    # TR corta por mes y ND por trimestre: aparecen fuera de orden entre sí, pero ninguno llegó a mayo
+    filas = [P(D(2027, 1, 1), D(2027, 3, 31), "ND", "Confirmed"), P(D(2027, 3, 1), D(2027, 3, 31), "TR", "Confirmed"),
+             P(D(2026, 10, 1), D(2026, 12, 31), "ND", "Confirmed"), P(D(2026, 11, 1), D(2026, 11, 30), "TR", "Confirmed"),
+             P(D(2026, 7, 1), D(2026, 9, 30), "ND", "Confirmed")]
+    assert not r.ya_paso_el_objetivo(filas, rangos)
+
+
+def test_si_la_grilla_viene_ascendente_no_corta():
+    asc = [P(D(2026, 1, 1), D(2026, 1, 31), "TR", "Confirmed"), P(D(2026, 5, 1), D(2026, 5, 31), "TR", "Confirmed"),
+           P(D(2026, 9, 1), D(2026, 9, 30), "TR", "Confirmed")]
+    assert not r.ya_paso_el_objetivo(asc, [(D(2026, 10, 1), D(2026, 10, 1))])

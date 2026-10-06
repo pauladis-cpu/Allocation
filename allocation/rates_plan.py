@@ -135,36 +135,40 @@ def planear(periodos, rangos):
     return plan
 
 
-def direccion_orden(periodos):
-    """'asc' | 'desc' | None: en qué orden vienen las filas de la grilla según los períodos leídos hasta ahora
-    (se colapsan los repetidos consecutivos: varios price codes del mismo período). Hace falta ver al menos
-    3 períodos distintos y que TODOS respeten el mismo sentido; si no, no se asume ningún orden."""
-    inis = []
-    for p in periodos:
-        if not inis or inis[-1] != p.ini:
-            inis.append(p.ini)
-    if len(inis) < 3:
-        return None
-    if all(a >= b for a, b in zip(inis, inis[1:])):
-        return "desc"
-    if all(a <= b for a, b in zip(inis, inis[1:])):
-        return "asc"
-    return None
+MESES_MARGEN = 5   # meses hacia atrás desde la fecha más reciente pedida, por si los price codes tienen cortes distintos
 
 
-def ya_paso_el_objetivo(periodos_en_orden, rangos):
-    """True si, dado el orden de la grilla, las filas que faltan leer ya no pueden tocar ninguno de los
-    rangos a cerrar (se leyó una fila más allá del extremo del rango). Permite dejar de scrollear apenas se
-    cubrió lo que importa. Sin un orden claro devuelve False (se lee todo)."""
+def restar_meses(d, meses):
+    """d menos N meses; si el día no existe en el mes destino (ej. 31 -> febrero) se usa el último día."""
+    total = d.year * 12 + (d.month - 1) - meses
+    anio, mes = divmod(total, 12)
+    mes += 1
+    for dia in (d.day, 30, 29, 28):
+        try:
+            return date(anio, mes, dia)
+        except ValueError:
+            continue
+    raise ValueError(d)
+
+
+def limite_de_lectura(rangos, meses=None):
+    """Fecha más allá de la cual (hacia atrás) ya no hace falta leer la grilla: la más ANTIGUA entre el inicio
+    del rango más antiguo pedido y (fecha más reciente pedida - MESES_MARGEN). El margen cubre price codes
+    con cortes distintos, cuyas filas pueden aparecer más abajo de lo que indicaría el orden."""
+    meses = MESES_MARGEN if meses is None else meses
+    return min(min(a for a, _ in rangos), restar_meses(max(b for _, b in rangos), meses))
+
+
+def ya_paso_el_objetivo(periodos_en_orden, rangos, meses=None):
+    """True si ya se leyó un período que empieza en o antes de limite_de_lectura(): la grilla viene de la
+    fecha más lejana a la más reciente, así que lo que falta leer es más antiguo y no puede tocar lo pedido.
+    Si lo leído hasta ahora parece venir en el orden contrario (ascendente), NO corta: se lee todo."""
     if not rangos or not periodos_en_orden:
         return False
-    sentido = direccion_orden(periodos_en_orden)
-    ultimo = periodos_en_orden[-1]
-    if sentido == "asc":
-        return ultimo.ini > max(b for _, b in rangos)       # más recientes que todo lo pedido
-    if sentido == "desc":
-        return ultimo.fin < min(a for a, _ in rangos)       # más antiguas que todo lo pedido
-    return False
+    if periodos_en_orden[0].ini < periodos_en_orden[-1].ini:
+        return False
+    limite = limite_de_lectura(rangos, meses)
+    return any(p.ini <= limite for p in periodos_en_orden)
 
 
 def resumen(codigo_largo, plan, lectura=True):

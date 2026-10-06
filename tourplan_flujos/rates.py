@@ -240,8 +240,9 @@ def _leer_estable(driver):
 
 def leer_periodos(driver, rangos=None):
     """Lee la grilla de períodos recorriendo el scroll interno si lo hay. Deduplica por contenido.
-    Con `rangos` (los que hay que cerrar) deja de scrollear apenas las filas ya pasaron el extremo de lo
-    pedido, si el orden de la grilla es claro (ascendente o descendente); sin orden claro, o con
+    La grilla viene de la fecha más lejana a la más reciente. Con `rangos` (los que hay que cerrar) deja de
+    scrollear apenas leyó un período que empieza MESES_MARGEN meses antes de la fecha más reciente pedida
+    (margen por si los price codes tienen cortes distintos). Sin rangos, o con
     TOURPLAN_RATES_ESCANEO_COMPLETO=1, lee toda la grilla."""
     completo = os.environ.get("TOURPLAN_RATES_ESCANEO_COMPLETO", "") == "1"
     vistos = {}
@@ -255,12 +256,12 @@ def leer_periodos(driver, rangos=None):
         if rangos and not completo:
             en_orden = [rp.Periodo(*parsear_rango(f["rango"]), f["pc"], f["status"], f["nombre"]) for f in vistos.values()]
             if rp.ya_paso_el_objetivo(en_orden, rangos):
-                cortado_en = (rp.direccion_orden(en_orden), len(vistos))
+                cortado_en = (rp.limite_de_lectura(rangos), len(vistos))
                 break
     _scroll_a(driver, 0)
     if cortado_en:
-        print(f"    ↳ grilla {'ascendente' if cortado_en[0] == 'asc' else 'descendente'}: se dejó de leer al pasar "
-              f"las fechas pedidas ({cortado_en[1]} fila(s) leídas)", flush=True)
+        print(f"    ↳ se dejó de leer al llegar a períodos anteriores al {cortado_en[0]:%d/%m/%Y} "
+              f"({rp.MESES_MARGEN} meses antes de lo pedido); {cortado_en[1]} fila(s) leídas", flush=True)
     out = []
     for f in vistos.values():
         a, b = parsear_rango(f["rango"])

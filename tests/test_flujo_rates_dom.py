@@ -193,37 +193,40 @@ def _grilla_virtual(drv_pg, descendente):
     drv_pg.set_content(html)
 
 
-@pytest.mark.parametrize("descendente", [False, True])
-def test_el_scroll_se_corta_al_pasar_el_rango_pedido(drv_virtual, descendente, capsys):
-    """Solo se scrollea hasta cubrir las fechas pedidas, no toda la grilla (ascendente o descendente)."""
-    _grilla_virtual(drv_virtual.page, descendente)
-    # las fechas pedidas están al principio de la grilla (más antiguas si es ascendente, más recientes si es descendente)
-    rangos = [(date(2026, 11, 25), date(2026, 11, 27))] if descendente else [(date(2026, 10, 5), date(2026, 10, 7))]
+def test_el_scroll_se_corta_con_el_margen_de_meses(drv_virtual, capsys, monkeypatch):
+    """Grilla de la fecha más lejana a la más reciente: se scrollea hasta un período MESES_MARGEN antes de lo pedido."""
+    _grilla_virtual(drv_virtual.page, True)                          # 29/Nov ... 01/Oct
+    monkeypatch.setattr(rp, "MESES_MARGEN", 1)
+    rangos = [(date(2026, 11, 25), date(2026, 11, 27))]              # límite: 27/Oct (1 mes antes)
     ps = rt.leer_periodos(drv_virtual, rangos)
-    assert len(ps) < 40                                              # no leyó las 60 filas
-    assert {r0 + __import__("datetime").timedelta(days=i) for r0 in [rangos[0][0]] for i in range(3)} <= {p.ini for p in ps}
+    assert len(ps) < 45                                              # no leyó las 60 filas
+    assert min(p.ini for p in ps) <= date(2026, 10, 27)              # llegó hasta el margen
+    assert {date(2026, 11, 25), date(2026, 11, 26), date(2026, 11, 27)} <= {p.ini for p in ps}
     assert "se dejó de leer" in capsys.readouterr().out
-    plan = rp.planear(ps, rangos)                                    # el plan con lo leído es completo
+    plan = rp.planear(ps, rangos)
     assert len(plan.ediciones) == 3 and plan.cortes == []
 
 
-def test_grilla_descendente_con_fechas_antiguas_lee_hasta_encontrarlas(drv_virtual):
-    """Si las fechas pedidas están al final del orden, hay que scrollear hasta ahí (no hay atajo): igual se lee bien."""
+def test_con_el_margen_por_defecto_de_5_meses_una_grilla_corta_se_lee_entera(drv_virtual):
     _grilla_virtual(drv_virtual.page, True)
-    rangos = [(date(2026, 10, 5), date(2026, 10, 7))]
-    ps = rt.leer_periodos(drv_virtual, rangos)
+    assert len(rt.leer_periodos(drv_virtual, [(date(2026, 11, 25), date(2026, 11, 27))])) == 60
+
+
+def test_grilla_ascendente_no_se_corta(drv_virtual):
+    _grilla_virtual(drv_virtual.page, False)
+    assert len(rt.leer_periodos(drv_virtual, [(date(2026, 10, 5), date(2026, 10, 7))])) == 60
+
+
+def test_fechas_antiguas_en_grilla_descendente_se_leen_hasta_el_final(drv_virtual, monkeypatch):
+    _grilla_virtual(drv_virtual.page, True)
+    monkeypatch.setattr(rp, "MESES_MARGEN", 1)
+    ps = rt.leer_periodos(drv_virtual, [(date(2026, 10, 5), date(2026, 10, 7))])
     assert {date(2026, 10, 5), date(2026, 10, 6), date(2026, 10, 7)} <= {p.ini for p in ps}
-
-
-@pytest.mark.parametrize("descendente", [False, True])
-def test_rango_que_llega_al_final_de_la_grilla_lee_hasta_el_final(drv_virtual, descendente):
-    _grilla_virtual(drv_virtual.page, descendente)
-    rangos = [(date(2026, 11, 28), date(2026, 11, 29))]
-    ps = rt.leer_periodos(drv_virtual, rangos)
-    assert {date(2026, 11, 28), date(2026, 11, 29)} <= {p.ini for p in ps}
 
 
 def test_sin_rangos_o_con_escaneo_completo_lee_todo(drv_virtual, monkeypatch):
     assert len(rt.leer_periodos(drv_virtual)) == 60
+    _grilla_virtual(drv_virtual.page, True)
+    monkeypatch.setattr(rp, "MESES_MARGEN", 1)
     monkeypatch.setenv("TOURPLAN_RATES_ESCANEO_COMPLETO", "1")
-    assert len(rt.leer_periodos(drv_virtual, [(date(2026, 10, 5), date(2026, 10, 6))])) == 60
+    assert len(rt.leer_periodos(drv_virtual, [(date(2026, 11, 25), date(2026, 11, 27))])) == 60
