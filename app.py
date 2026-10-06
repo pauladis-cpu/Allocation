@@ -2,14 +2,13 @@
 
 App local (Streamlit) que corre en la PC de cada persona. Busca el hotel en el
 registro (hoja ALLOCATIONS), arma el pedido (fechas + allocations) y lo escribe
-en la cola (hoja COLA) del Google Sheet. «Leer plan (lectura)» abre Tourplan y
-deja en OBSERVACIONES lo que se cerraría, sin escribir nada.
+en la cola (hoja COLA) del Google Sheet. Los pedidos nuevos se cargan siempre en modo
+aplicar (el modo lectura ya no se ofrece en la interfaz; el runner sigue entendiendo filas con MODO lectura).
 
 Interfaz: barra superior (Nuevo pedido / Cola / usuario) y un flujo de 3 pasos
 (1 Hotel, 2 Fechas y alcance, 3 Revisar y enviar), según el esquema de pantallas.
 «Enviar a la cola» solo escribe el pedido; «Enviar y ejecutar» y «Ejecutar pendientes» lanzan
-runner.py, que usa el MODO de cada fila (lectura: deja el plan en OBSERVACIONES; aplicar: toma
-el pedido y cierra en Tourplan). Escribir en Producción exige autorización explícita en la
+runner.py, que usa el MODO de cada fila (aplicar: toma el pedido y cierra en Tourplan). Escribir en Producción exige autorización explícita en la
 Configuración.
 
 La configuración (credenciales de Tourplan, URL del Sheet, entorno) se guarda por
@@ -31,7 +30,7 @@ import streamlit.components.v1 as components
 from common.abort import ABORT_EXIT_CODE
 from allocation import cola, fechas as fch, registro
 from allocation.constantes import (
-    EXCLUDED_OPTIONS, HOJA_ALLOCATIONS, HOJA_COLA, MODO_APLICAR, MODO_LECTURA,
+    EXCLUDED_OPTIONS, HOJA_ALLOCATIONS, HOJA_COLA, MODO_APLICAR,
     URLS_ENTORNO, URL_PRODUCCION,
 )
 from common import user_config
@@ -46,7 +45,7 @@ INTERVALO_COLA = 10  # segundos entre lecturas automáticas de la hoja COLA
 
 # Claves de widgets que deben sobrevivir al cambio de paso (Streamlit descarta el
 # estado de los widgets que no se dibujan en una corrida).
-_CLAVES_PERSISTENTES = ("texto_fechas", "origen", "revisado", "modo_pedido", "consulta")
+_CLAVES_PERSISTENTES = ("texto_fechas", "origen", "consulta")
 
 
 def hoy():
@@ -150,7 +149,6 @@ CSS = """
 .paso-n { display:flex; gap:.7rem; margin:.35rem 0; line-height:1.4; }
 .paso-n .num { flex:0 0 28px; height:28px; border-radius:50%; background:#eceef1; display:flex; align-items:center; justify-content:center; font-weight:600; font-size:.85rem; }
 .aviso-ambar { background:#fdf0d5; color:#6b4500; border-radius:10px; padding:.8rem 1rem; }
-.st-key-modo_pedido [data-testid="stBaseButton-segmented_control"], .st-key-modo_pedido [data-testid="stBaseButton-segmented_controlActive"] { font-family:'IBM Plex Mono', monospace; }
 
 [class*="st-key-enviar_cola"] button:not(:disabled) { border-color:var(--acc); color:var(--acc); background:#fff; }
 
@@ -225,7 +223,7 @@ def _set_vista(v):
 # ── Estado del pedido ─────────────────────────────────────────────────────
 
 def _resetear_pedido():
-    for k in ("sel_fechas", "texto_fechas", "_nuevo_texto", "cal_last", "revisado", "origen",
+    for k in ("sel_fechas", "texto_fechas", "_nuevo_texto", "cal_last", "origen",
               "avisos_texto", "alloc_elegidas"):
         st.session_state.pop(k, None)
     for k in [k for k in st.session_state if k.startswith("chk_")]:
@@ -654,19 +652,12 @@ def render_revisar():
                             unsafe_allow_html=True)
 
     with col_der:
-        with card("modo"):
-            st.markdown("**Modo**")
-            modo = st.segmented_control("Modo", [MODO_LECTURA, MODO_APLICAR], default=MODO_LECTURA,
-                                        required=True, key="modo_pedido", label_visibility="collapsed",
-                                        width="stretch")
-            st.markdown('<div class="ayuda">En lectura el script muestra qué cerraría sin escribir nada en '
-                        'Tourplan. Conviene empezar por ahí y recién después aplicar.</div>',
+        prod = cfg["entorno"] == "produccion"
+        with card("entorno"):
+            st.markdown("**Se ejecuta en Tourplan**")
+            st.markdown(f'<div class="ayuda">Entorno: <b>{"PRODUCCIÓN" if prod else "Test"}</b>. El script cierra las '
+                        'fechas y escribe en Tourplan (no permite deshacer fácilmente; nunca reabre una fecha).</div>',
                         unsafe_allow_html=True)
-            if modo == MODO_APLICAR:
-                st.warning(f"Modo aplicar: el script va a escribir en Tourplan ({cfg['entorno'].upper()}). "
-                           "Tourplan no permite deshacer fácilmente y el script nunca reabre una fecha.")
-        with card("revision"):
-            revisado = st.checkbox("Revisé las fechas contra el mail original.", key="revisado")
         st.markdown('<div class="aviso-ambar">Hoy cuenta como fecha vigente. Las fechas anteriores a hoy se '
                     'descartan antes de enviar.</div>', unsafe_allow_html=True)
         if not nombre:
@@ -675,21 +666,20 @@ def render_revisar():
         c_vol, c_cola = st.columns(2)
         c_vol.button("Volver", key="vol_2", use_container_width=True, on_click=_ir_paso, args=(2,))
         enviar = c_cola.button("Enviar a la cola", key="enviar_cola", use_container_width=True,
-                               disabled=not (revisado and nombre))
+                               disabled=not nombre)
         lista, motivo = _config_lista(cfg)
-        base_url = URLS_ENTORNO[cfg["entorno"]]
-        bloqueo_prod = modo == MODO_APLICAR and base_url == URL_PRODUCCION and not cfg["produccion_confirmada"]
+        bloqueo_prod = prod and not cfg["produccion_confirmada"]
         if bloqueo_prod:
             motivo = "Escribir en Producción requiere autorización explícita en la Configuración."
         ejecutar = st.button("Enviar y ejecutar", key="enviar_ejecutar", type="primary", use_container_width=True,
-                             disabled=not (revisado and lista) or bloqueo_prod or _estado_ejecucion()["running"],
+                             disabled=not lista or bloqueo_prod or _estado_ejecucion()["running"],
                              help=motivo or "Escribe el pedido y lo ejecuta ahora en esta PC.")
 
     if enviar or ejecutar:
         try:
             valores = cola.armar_pedido(
                 codigo_hotel=hotel.codigo, allocations=cods, todas=todas, fechas=sel,
-                cargado_por=nombre, modo=modo, origen=origen)
+                cargado_por=nombre, modo=MODO_APLICAR, origen=origen)
             with st.spinner("Escribiendo en la cola..."):
                 fila = cola.enviar_pedido(_conectar(HOJA_COLA), valores)
         except Exception as e:

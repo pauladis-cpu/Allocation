@@ -22,7 +22,10 @@ de entorno + config por PC + OAuth de Google con gspread).
 | 7 | Endurecimiento (errores, logs, reintentos) | pendiente |
 
 Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecutar» (ese pedido) y
-«Ejecutar pendientes» (todos) lanzan `runner.py`, que usa el **MODO de cada fila**:
+«Ejecutar pendientes» (todos) lanzan `runner.py`. Desde la interfaz **todos los pedidos nuevos se cargan en
+modo aplicar** (la pantalla «Revisar y enviar» ya no tiene selector de modo ni casilla de revisión: solo
+Volver, Enviar a la cola y Enviar y ejecutar). El runner sigue usando el **MODO de cada fila de la cola**, así que
+una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 
 - **lectura**: no escribe nada en Tourplan, no toma el pedido ni cambia estados; deja el plan en
   `OBSERVACIONES_CIERRE_ALLOTMENT` y `OBSERVACIONES_CIERRE_TARIFA`.
