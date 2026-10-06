@@ -7,6 +7,7 @@ Delete Rate Set; solo se elige por coincidencia exacta; un período Closed nunca
 antes de escribir se verifica el título del diálogo y después se relee el valor.
 """
 
+import os
 import re
 import time
 from datetime import timedelta
@@ -237,17 +238,29 @@ def _leer_estable(driver):
     return prev
 
 
-def leer_periodos(driver):
-    """Relee la grilla COMPLETA (después de cada corte y cada guardado), recorriendo el scroll
-    interno si lo hay. Deduplica por contenido; no depende del orden ni de la posición."""
+def leer_periodos(driver, rangos=None):
+    """Lee la grilla de períodos recorriendo el scroll interno si lo hay. Deduplica por contenido.
+    Con `rangos` (los que hay que cerrar) deja de scrollear apenas las filas ya pasaron el extremo de lo
+    pedido, si el orden de la grilla es claro (ascendente o descendente); sin orden claro, o con
+    TOURPLAN_RATES_ESCANEO_COMPLETO=1, lee toda la grilla."""
+    completo = os.environ.get("TOURPLAN_RATES_ESCANEO_COMPLETO", "") == "1"
     vistos = {}
     _scroll_a(driver, 0)
+    cortado_en = None
     for pos in _posiciones(driver):
         if pos:
             _scroll_a(driver, pos)
         for f in _leer_estable(driver):
             vistos.setdefault((f["rango"].casefold(), f["pc"].upper(), f["status"], f["nombre"]), f)
+        if rangos and not completo:
+            en_orden = [rp.Periodo(*parsear_rango(f["rango"]), f["pc"], f["status"], f["nombre"]) for f in vistos.values()]
+            if rp.ya_paso_el_objetivo(en_orden, rangos):
+                cortado_en = (rp.direccion_orden(en_orden), len(vistos))
+                break
     _scroll_a(driver, 0)
+    if cortado_en:
+        print(f"    ↳ grilla {'ascendente' if cortado_en[0] == 'asc' else 'descendente'}: se dejó de leer al pasar "
+              f"las fechas pedidas ({cortado_en[1]} fila(s) leídas)", flush=True)
     out = []
     for f in vistos.values():
         a, b = parsear_rango(f["rango"])
@@ -524,7 +537,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
     abrir_habitacion(driver, codigo_hotel, cod_hab)
     hechas = cortes = 0
     for _ in range(max_iteraciones):
-        periodos = leer_periodos(driver)
+        periodos = leer_periodos(driver, rangos)
         plan = rp.planear(periodos, rangos)
         print(f"    → grilla de Rates: {len(periodos)} fila(s); a editar {len(plan.ediciones)}, "
               f"cortes pendientes {len(plan.cortes)}, ya cerradas {len(plan.ya_cerrados)}", flush=True)
@@ -532,7 +545,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
             return plan, rp.resumen(cod_hab, plan, lectura=True), len(plan.cortes)
         if plan.cortes:
             c = plan.cortes[0]
-            candidato = next((p for p in leer_periodos(driver) if (p.ini, p.fin) == (c.ini, c.fin)
+            candidato = next((p for p in periodos if (p.ini, p.fin) == (c.ini, c.fin)
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
@@ -551,7 +564,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
         hechas += 1
     else:
         raise FlujoError("Demasiadas iteraciones cortando/editando: se frena.")
-    final = rp.planear(leer_periodos(driver), rangos)
+    final = rp.planear(leer_periodos(driver, rangos), rangos)
     if final.ediciones or final.cortes:
         raise FlujoError("Después de cerrar todavía quedan períodos sin cerrar: " + rp.resumen(cod_hab, final, lectura=True))
     texto = f"{cod_hab}: cerró {hechas} período(s)/price code(s)" + (f" ({cortes} corte(s))" if cortes else "") \

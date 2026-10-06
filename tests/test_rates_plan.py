@@ -97,3 +97,26 @@ def test_periodo_que_cubre_dos_rangos_disjuntos():
     g = [P(D(2026, 12, 1), D(2026, 12, 31), "TR", "Confirmed")]
     plan = r.planear(g, [(D(2026, 12, 5), D(2026, 12, 6)), (D(2026, 12, 10), D(2026, 12, 11))])
     assert [c.fecha for c in plan.cortes] == [D(2026, 12, 5), D(2026, 12, 7), D(2026, 12, 10), D(2026, 12, 12)]
+
+
+def _per(*dias, pc="TR"):
+    return [P(D(2026, 10, d), D(2026, 10, d), pc, "Confirmed") for d in dias]
+
+
+def test_direccion_del_orden():
+    assert r.direccion_orden(_per(1, 2, 3)) == "asc"
+    assert r.direccion_orden(_per(9, 7, 5)) == "desc"
+    assert r.direccion_orden(_per(1, 2)) is None                      # pocos períodos para decidir
+    assert r.direccion_orden(_per(1, 5, 3)) is None                   # sin orden claro
+    # varios price codes del mismo período seguidos no cuentan como períodos distintos
+    assert r.direccion_orden(_per(1, 1, 2, 2, 3, 3)) == "asc"
+
+
+def test_ya_paso_el_objetivo_ascendente_y_descendente():
+    rangos = [(D(2026, 10, 10), D(2026, 10, 12))]
+    assert not r.ya_paso_el_objetivo(_per(1, 5, 11), rangos)           # todavía dentro del rango
+    assert r.ya_paso_el_objetivo(_per(1, 5, 13), rangos)               # asc: ya pasó 12/10
+    assert not r.ya_paso_el_objetivo(_per(20, 15, 11), rangos)
+    assert r.ya_paso_el_objetivo(_per(20, 15, 9), rangos)              # desc: ya pasó 10/10 hacia atrás
+    assert not r.ya_paso_el_objetivo(_per(1, 20, 5), rangos)           # sin orden claro: no corta
+    assert not r.ya_paso_el_objetivo(_per(20, 15, 9), [])

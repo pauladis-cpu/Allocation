@@ -135,6 +135,38 @@ def planear(periodos, rangos):
     return plan
 
 
+def direccion_orden(periodos):
+    """'asc' | 'desc' | None: en qué orden vienen las filas de la grilla según los períodos leídos hasta ahora
+    (se colapsan los repetidos consecutivos: varios price codes del mismo período). Hace falta ver al menos
+    3 períodos distintos y que TODOS respeten el mismo sentido; si no, no se asume ningún orden."""
+    inis = []
+    for p in periodos:
+        if not inis or inis[-1] != p.ini:
+            inis.append(p.ini)
+    if len(inis) < 3:
+        return None
+    if all(a >= b for a, b in zip(inis, inis[1:])):
+        return "desc"
+    if all(a <= b for a, b in zip(inis, inis[1:])):
+        return "asc"
+    return None
+
+
+def ya_paso_el_objetivo(periodos_en_orden, rangos):
+    """True si, dado el orden de la grilla, las filas que faltan leer ya no pueden tocar ninguno de los
+    rangos a cerrar (se leyó una fila más allá del extremo del rango). Permite dejar de scrollear apenas se
+    cubrió lo que importa. Sin un orden claro devuelve False (se lee todo)."""
+    if not rangos or not periodos_en_orden:
+        return False
+    sentido = direccion_orden(periodos_en_orden)
+    ultimo = periodos_en_orden[-1]
+    if sentido == "asc":
+        return ultimo.ini > max(b for _, b in rangos)       # más recientes que todo lo pedido
+    if sentido == "desc":
+        return ultimo.fin < min(a for a, _ in rangos)       # más antiguas que todo lo pedido
+    return False
+
+
 def resumen(codigo_largo, plan, lectura=True):
     """Texto para OBSERVACIONES_CIERRE_TARIFA."""
     verbo = "cerraría" if lectura else "cerró"
