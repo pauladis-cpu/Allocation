@@ -268,7 +268,7 @@ def _entero(v):
 def verificar_columnas_dias(driver):
     """Frena si hay grupos de columnas distintos de GENERAL o 'Show Release As Date' tildado."""
     info = driver.execute_script(_JS_DLG + """
-        var grupos = Array.from(dlg.querySelectorAll('#days-tab .splitcol'))
+        var grupos = Array.from(dlg.querySelectorAll('#days-tab .tpheaderrow.top .splitcol'))
             .map(function(e){ return e.textContent.trim(); }).filter(function(t){ return t; });
         var rel = null;
         Array.from(dlg.querySelectorAll('label')).forEach(function(l){

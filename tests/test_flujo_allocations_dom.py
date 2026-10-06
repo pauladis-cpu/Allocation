@@ -33,7 +33,14 @@ HTML = """
   <div id="setup-tab"><table class="tpdestination"><thead><tr><th>Location</th><th>Service</th><th>Option</th></tr></thead>
     <tbody><tr><td>BUE</td><td>HT</td><td>ST</td></tr></tbody></table></div>
   <div id="days-tab">
-    <div class="splitcol">GENERAL</div>
+    <div class="tpheader">
+      <div class="tpheaderrow top"><span class="datecol action freeze">&nbsp;</span><span class="datecol date freeze">&nbsp;</span>
+        <span class="splitcol"><label>GENERAL</label></span></div>
+      <div class="tpheaderrow"><span class="datecol date freeze"><label>Date</label></span>
+        <span class="max splitcol"><label>Max</label></span><span class="used splitcol"><label>Used</label></span>
+        <span class="avail splitcol"><label>Avail</label></span><span class="release splitcol"><label>Release</label></span>
+        <span class="request splitcol"><label>RQ</label></span></div>
+    </div>
     <cdk-virtual-scroll-viewport id="vp" style="display:block;height:400px;overflow:auto;position:relative"></cdk-virtual-scroll-viewport>
   </div>
   <tp-button class="cancel"><button id="exit">Exit</button></tp-button>
@@ -54,8 +61,8 @@ HTML = """
       const row = document.createElement('div'); row.className = 'tpbodyrow'; row.dataset.index = i;
       row.style.cssText = 'position:absolute;top:' + (i*35) + 'px;height:35px';
       row.innerHTML = '<span class="datecol date"><label>' + String(d.getDate()).padStart(2,'0') + '/' + MES[d.getMonth()] + '/' + d.getFullYear() + '</label></span>'
-        + '<span class="used"><input value="' + u + '"></span><span class="max"><input value="' + m + '"></span>'
-        + '<span class="release"><input value="' + r.toLocaleString('en-US') + '"></span>';
+        + '<span class="used splitcol"><input value="' + u + '"></span><span class="max splitcol"><input value="' + m + '"></span>'
+        + '<span class="release splitcol"><input value="' + r.toLocaleString('en-US') + '"></span>';
       vp.appendChild(row);
     }
   }
@@ -123,7 +130,24 @@ def test_habitaciones_y_verificacion(drv):
     assert not fl.verificar_habitacion("BUEHT6RABA1ST", ["BUEHT6RABA1ST", "OTRA"])[0]
 
 
-def test_columnas_ok_y_exit_cierra_dialogo(drv):
+
+
+def test_columnas_dias_con_estructura_real_no_confunde_encabezados_con_grupos(drv):
+    # regresión: en Tourplan TODAS las columnas llevan la clase splitcol; el grupo (GENERAL)
+    # está solo en la fila superior del encabezado
     fl.verificar_columnas_dias(drv)
+
+
+def test_columnas_dias_frena_si_hay_otro_grupo(drv):
+    drv.page.evaluate("""() => { const f = document.querySelector('.tpheaderrow.top');
+        const e = document.createElement('span'); e.className = 'splitcol'; e.innerHTML = '<label>TWIN</label>'; f.appendChild(e); }""")
+    try:
+        with pytest.raises(fl.FlujoError, match="TWIN"):
+            fl.verificar_columnas_dias(drv)
+    finally:
+        drv.page.evaluate("() => { const f = document.querySelector('.tpheaderrow.top'); f.removeChild(f.lastElementChild); }")
+
+
+def test_exit_cierra_dialogo(drv):  # va al final: borra el diálogo simulado
     fl.cerrar_dialogo(drv)
     assert drv.find_elements(None, "body > tp-dialog") == []
