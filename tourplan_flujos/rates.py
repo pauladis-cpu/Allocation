@@ -330,7 +330,7 @@ def verificar_titulo_periodo(driver, cod_largo, periodo):
 def hacer_corte(driver, cod_largo, periodo, fecha_corte):
     """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo.
     Si aparece la casilla 'Split All Applicable Price Codes' (solo cuando más de un price code comparte
-    exactamente el período) la deja tildada: corta todos esos price codes (FX incluido: su período puede
+    exactamente el período) la deja tildada (se clickea su label, el input suele ser invisible): corta todos esos price codes (FX incluido: su período puede
     cortarse, lo único que nunca se hace con FX es editarlo). Si no aparece, corta sin ella."""
     _clic_fila(driver, periodo)
     try:
@@ -349,8 +349,9 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte):
         if not m or (_fecha_tp(m.group(1)), _fecha_tp(m.group(2))) != (periodo.ini, periodo.fin):
             raise FlujoError(f"El diálogo de Split dice {titulo!r}, se esperaba {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y}.")
         marcado = driver.execute_script(_JS_DLG + """
-            var c = dlg.querySelector('#split-applicable');
-            if (!c || !(c.offsetWidth || c.offsetHeight || c.getClientRects().length)) return null;   // no existe o está oculta
+            // Existe solo cuando más de un price code comparte el período. OJO: el <input> real suele estar
+            // invisible (el cuadrito se pinta aparte), así que NO se exige que sea visible: alcanza con que esté.
+            var c = dlg.querySelector('#split-applicable'); if (!c) return null;
             var i = c.tagName === 'INPUT' ? c : c.querySelector('input'); return i ? !!i.checked : null;""")
         if marcado is None:
             # Tourplan solo muestra la casilla cuando más de un price code comparte exactamente el período.

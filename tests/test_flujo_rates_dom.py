@@ -290,7 +290,7 @@ HTML_SPLIT = r"""
     d.querySelector('tp-button.splitdaterange button').addEventListener('click', () => {
       const s = document.createElement('tp-dialog');
       s.innerHTML = '<div class="split-content-panel"><h3>Split Date - 01/Dec/2026 - 25/Dec/2026</h3>'
-        + (window.CASILLA ? '<tp-checkbox id="split-applicable"><label class="tpcheckbox"><input type="checkbox"></label></tp-checkbox>'
+        + (window.CASILLA ? '<input type="checkbox" id="split-applicable" style="display:none">'   // input invisible, como en Tourplan
                             + '<label for="split-applicable">Split All Applicable Price Codes</label>' : '')
         + '<div><input type="text" class="tpdate-productdatesplitpoint"><input type="hidden" class="tphidden"></div>'
         + '<button class="tpbutton-addsplit" disabled>Add Split</button><ul class="dateranges"></ul>'
@@ -299,8 +299,8 @@ HTML_SPLIT = r"""
       const inp = s.querySelector('.tpdate-productdatesplitpoint'), hid = s.querySelector('.tphidden'), add = s.querySelector('.tpbutton-addsplit');
       inp.addEventListener('blur', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/); if (!m) return;
         const f = new Date(2000 + +m[3], +m[2]-1, +m[1]); hid.value = fmt(f); add.disabled = !(f > new Date(2026,11,1) && f <= new Date(2026,11,25)); });
-      const chk = s.querySelector('#split-applicable input');
-      if (chk) label_click: { s.querySelector('label[for="split-applicable"]').addEventListener('click', () => { chk.checked = !chk.checked; window.log.push('casilla:' + chk.checked); }); }
+      const chk = s.querySelector('#split-applicable');
+      if (chk) chk.addEventListener('change', () => window.log.push('casilla:' + chk.checked));
       add.addEventListener('click', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/), f = new Date(2000 + +m[3], +m[2]-1, +m[1]), a = new Date(f); a.setDate(a.getDate() - 1);
         s.querySelector('ul.dateranges').innerHTML = '<li><span class="date-range-display">Tue 01/Dec/2026 - Tue ' + fmt(a) + '</span></li><li><span class="date-range-display">Wed ' + fmt(f) + ' - Fri 25/Dec/2026</span></li>'; });
       s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + inp.value + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove(); });
