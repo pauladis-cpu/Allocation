@@ -178,22 +178,87 @@ def parsear_rango(txt):
     return a, b
 
 
+# La grilla de períodos puede tener scroll interno (CDK virtual scroll: solo las filas cercanas a la
+# pantalla existen en el DOM). Se detecta el contenedor y se recorre en pasos, deduplicando por
+# CONTENIDO (rango + price code), nunca por índice ni por referencias guardadas.
+_JS_CONTENEDOR = """
+    function contenedor(){
+        var th = document.querySelector('th.tpcol-RatePeriod'), tabla = th ? th.closest('table') : null;
+        if (tabla) {
+            var c = tabla.closest('cdk-virtual-scroll-viewport'); if (c) return c;
+            var el = tabla.parentElement;
+            while (el && el !== document.body) {
+                var st = getComputedStyle(el);
+                var puede = st.overflowY === 'auto' || st.overflowY === 'scroll' || st.overflow === 'auto' || st.overflow === 'scroll';
+                if (puede && el.scrollHeight > el.clientHeight + 10) return el;
+                el = el.parentElement;
+            }
+        }
+        return document.scrollingElement || document.body;
+    }
+"""
+PASO_MINIMO = 100
+
+
+def _info_scroll(driver):
+    return driver.execute_script(_JS_CONTENEDOR + "var c = contenedor(); return {top: c.scrollTop, alto: c.clientHeight, total: c.scrollHeight};")
+
+
+def _scroll_a(driver, pos):
+    """Mueve el contenedor Y la ventana (según el componente scrollea uno u otro)."""
+    driver.execute_script(_JS_CONTENEDOR + "var c = contenedor(); c.scrollTop = arguments[0]; window.scrollTo(0, arguments[0]);", int(pos))
+    time.sleep(0.4 * tp.VELOCIDAD)
+
+
+def _posiciones(driver):
+    """Posiciones de scroll a recorrer, de arriba hacia abajo, en pasos de la mitad del alto visible."""
+    info = _info_scroll(driver)
+    paso = max(PASO_MINIMO, info["alto"] // 2)
+    pos, out = 0, []
+    while True:
+        out.append(pos)
+        if pos + info["alto"] >= info["total"] - 2 or len(out) > 600:
+            return out
+        pos += paso
+
+
+def _leer_estable(driver):
+    """Lee las filas renderizadas; repite hasta que dos lecturas seguidas coinciden (el re-render
+    de la grilla virtual puede tardar tras un scroll)."""
+    prev = None
+    for _ in range(6):
+        filas = driver.execute_script(_JS_GRILLA)
+        if filas is None:
+            raise FlujoError("No encontré la grilla de períodos de Rates.")
+        if filas == prev:
+            return filas
+        prev = filas
+        time.sleep(0.25 * tp.VELOCIDAD)
+    return prev
+
+
 def leer_periodos(driver):
-    """Relee la grilla COMPLETA (después de cada corte y cada guardado)."""
-    filas = driver.execute_script(_JS_GRILLA)
-    if filas is None:
-        raise FlujoError("No encontré la grilla de períodos de Rates.")
+    """Relee la grilla COMPLETA (después de cada corte y cada guardado), recorriendo el scroll
+    interno si lo hay. Deduplica por contenido; no depende del orden ni de la posición."""
+    vistos = {}
+    _scroll_a(driver, 0)
+    for pos in _posiciones(driver):
+        if pos:
+            _scroll_a(driver, pos)
+        for f in _leer_estable(driver):
+            vistos.setdefault((f["rango"].casefold(), f["pc"].upper(), f["status"], f["nombre"]), f)
+    _scroll_a(driver, 0)
     out = []
-    for f in filas:
+    for f in vistos.values():
         a, b = parsear_rango(f["rango"])
         out.append(rp.Periodo(a, b, f["pc"], f["status"], f["nombre"]))
     return out
 
 
-def _clic_fila(driver, periodo):
-    """Clic en td.tpcol-rateperiod de la fila (rango, price code). Atómico: se ubica y se hace
-    clic en la misma ejecución, y debe haber EXACTAMENTE una. Nunca por posición."""
-    n = driver.execute_script("""
+def _intentar_clic(driver, periodo):
+    """Clic en td.tpcol-rateperiod de la fila (rango, price code) ENTRE LAS FILAS RENDERIZADAS.
+    Atómico: se ubica y se hace clic en la misma ejecución. Devuelve cuántas filas coinciden."""
+    return driver.execute_script("""
         var a = arguments[0], b = arguments[1], pc = arguments[2];
         var th = document.querySelector('th.tpcol-RatePeriod'); if (!th) return -1;
         var tabla = th.closest('table'); var norm = function(s){ return (s||'').replace(/\\s+/g,' ').trim(); };
@@ -204,6 +269,19 @@ def _clic_fila(driver, periodo):
             return m && m[1].toLowerCase() === a && m[2].toLowerCase() === b; });
         if (ok.length === 1) { ok[0].querySelector('td.tpcol-rateperiod').click(); }
         return ok.length;""", tp.fmt_tp(_dt(periodo.ini)).casefold(), tp.fmt_tp(_dt(periodo.fin)).casefold(), periodo.pc.upper())
+
+
+def _clic_fila(driver, periodo):
+    """Abre el período (rango, price code). Si la fila no está renderizada, recorre el scroll de la
+    grilla hasta encontrarla (se reubica por texto en cada posición, nunca por índice). Debe haber
+    EXACTAMENTE una; nunca se hace clic por posición."""
+    n = _intentar_clic(driver, periodo)
+    if n == 0:
+        for pos in _posiciones(driver):
+            _scroll_a(driver, pos)
+            n = _intentar_clic(driver, periodo)
+            if n != 0:
+                break
     if n != 1:
         raise FlujoError(f"Período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y} ({periodo.pc}): {n} filas coinciden.")
     if not _esperar(driver, lambda: driver.find_elements(By.CSS_SELECTOR, SEL_DIALOGO), timeout=15):

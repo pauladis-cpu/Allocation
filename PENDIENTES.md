@@ -28,3 +28,8 @@
 ## A confirmar en la próxima corrida en Test
 - [ ] Que ya no aparezca el aviso repetido de «dialog de carga seguía abierto». Si aparece, el log ahora
   imprime el texto del dialog que lo causa (`⚠ Un dialog de carga seguía abierto tras esperar: [...]`).
+
+## Otras grillas que podrían tener scroll virtual (revisar si aparece un caso)
+- [ ] Lista de allocations del hotel (`tp-grid[tpid="allocations-grid"]`): hoy se busca solo entre las filas renderizadas.
+- [ ] Grilla de tarifas del período (`#tabs-rates #costs-panel`): hoy se asume que las 5 filas (Twin/Double, Single,
+  Additional Adult, Child, Infant) están todas en el DOM.

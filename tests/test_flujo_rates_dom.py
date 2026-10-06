@@ -131,3 +131,57 @@ def test_product_find_elige_la_exacta_y_falla_si_no_esta(drv):
     assert drv.page.evaluate("window.elegida()").startswith("BUEHT1ESP06SU")
     with pytest.raises(FlujoError, match="No encontré la habitación"):
         rt.recorrer_product_find(drv, objetivo="BUEHT1ESP06XX")
+
+
+HTML_VIRTUAL = r"""
+<html><body>
+<div id="vp" style="height:150px;overflow:auto">
+<table><thead><tr><th class="tpcol-RatePeriod">Rate Period</th><th>PC</th></tr></thead><tbody id="tb"></tbody></table></div>
+<script>
+  // 60 períodos de un día (uno por price code TR) y solo ~6 filas renderizadas cerca del scroll (CDK virtual)
+  const N = 60, H = 30, MES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const f = i => { const d = new Date(2026, 9, 1 + i); return String(d.getDate()).padStart(2,'0') + '/' + MES[d.getMonth()] + '/' + d.getFullYear(); };
+  const vp = document.getElementById('vp'), tb = document.getElementById('tb');
+  function render(){
+    const ini = Math.max(0, Math.floor(vp.scrollTop / H) - 1), fin = Math.min(N, ini + 8);
+    let h = '<tr style="height:' + (ini*H) + 'px"><td colspan="4"></td></tr>';
+    for (let i = ini; i < fin; i++)
+      h += '<tr style="height:' + H + 'px"><td class="tpcol-rateperiod">' + f(i) + ' - ' + f(i) + '</td><td class="tpcol-pricecodecode">TR</td>'
+         + '<td class="tpcol-ratestatuses">Confirmed</td><td class="tpcol-ratenames">Standard</td></tr>';
+    h += '<tr style="height:' + ((N-fin)*H) + 'px"><td colspan="4"></td></tr>';
+    tb.innerHTML = h;
+  }
+  vp.addEventListener('scroll', render); render();
+  tb.addEventListener('click', e => { const td = e.target.closest('td.tpcol-rateperiod'); if (td) window.abierto = td.textContent; });
+</script></body></html>
+"""
+
+
+@pytest.fixture()
+def drv_virtual():
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        pg = b.new_page()
+        pg.set_content(HTML_VIRTUAL)
+        yield Driver(pg)
+        b.close()
+
+
+def test_grilla_de_periodos_con_scroll_virtual_se_lee_completa(drv_virtual):
+    """Regresión: solo las filas cercanas a la pantalla existen en el DOM; leer sin scroll perdía períodos."""
+    renderizadas = drv_virtual.execute_script("return document.querySelectorAll('td.tpcol-rateperiod').length;")
+    assert renderizadas < 12                                    # sin scroll solo hay unas pocas filas
+    ps = rt.leer_periodos(drv_virtual)
+    assert len(ps) == 60
+    assert ps[0].ini == date(2026, 10, 1) and max(p.ini for p in ps) == date(2026, 11, 29)
+
+
+def test_clic_en_una_fila_fuera_de_pantalla_hace_scroll_y_la_encuentra(drv_virtual):
+    lejana = rp.Periodo(date(2026, 11, 25), date(2026, 11, 25), "TR", "Confirmed")
+    # el diálogo no existe en este mock: solo comprobamos que localizó y clickeó la fila exacta
+    with pytest.raises(FlujoError, match="No se abrió el diálogo"):
+        rt._clic_fila(drv_virtual, lejana)
+    assert drv_virtual.execute_script("return window.abierto;").startswith("25/Nov/2026")
+    inexistente = rp.Periodo(date(2027, 1, 1), date(2027, 1, 1), "TR", "Confirmed")
+    with pytest.raises(FlujoError, match="0 filas"):
+        rt._clic_fila(drv_virtual, inexistente)
