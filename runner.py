@@ -174,6 +174,45 @@ def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
     return [validar_habitacion(h, codigo_hotel) for h in dict.fromkeys(habs)]
 
 
+def es_hg(a):
+    """Allocation de descripción «HG - …»: sus tarifas se cierran solo mientras la allocation está vigente."""
+    return re.match(r"^HG(?![A-Z0-9])", (a.descripcion or "").strip().upper()) is not None
+
+
+def fechas_de_tarifa(a, fechas):
+    """Fechas en que esta allocation pide cerrar tarifas: las HG, solo hasta «Vigente hasta» (inclusive);
+    el resto, todas las indicadas."""
+    if not es_hg(a):
+        return list(fechas)
+    if not a.vigente_hasta:
+        raise PedidoError(f"{a.codigo}: la descripción empieza con HG pero «Vigente hasta» no tiene una fecha válida "
+                          f"({a.vigente_hasta_txt!r}): no se sabe hasta cuándo cerrar tarifas.")
+    return [f for f in fechas if f <= a.vigente_hasta]
+
+
+def fechas_por_habitacion(habs, elegidas, fechas):
+    """{habitación: fechas}. Una habitación pedida por varias allocations toma la unión de sus fechas
+    (si alguna no es HG, son todas)."""
+    con = [a for a in elegidas if a.cierra_tarifa]
+    out = {}
+    for h in habs:
+        propias = set()
+        for a in con:
+            t = a.tarifas.strip().upper()
+            if t == "LINKEADA":
+                pide = a.habitacion.replace(" ", "").upper() == h
+            elif t == "TODAS":
+                pide = True
+            elif t == "OTRO":
+                pide = h in codigos_de(a.habitaciones_a_cerrar)
+            else:
+                pide = h in codigos_de(a.tarifas)
+            if pide:
+                propias.update(fechas_de_tarifa(a, fechas))
+        out[h] = sorted(propias)
+    return out
+
+
 def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
     """Devuelve (estado, observaciones)."""
     from common import tourplan as tp
@@ -189,11 +228,22 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         log("    ○ ninguna allocation del pedido cierra tarifa")
         return cola.ESTADO_SALTEADO, "no cierra tarifa"
     log(f"    habitaciones a cerrar ({len(habs)}): {', '.join(habs)}")
-    rangos = agrupar_rangos(fechas)
+    try:
+        fechas_hab = fechas_por_habitacion(habs, elegidas, fechas)
+    except PedidoError as e:
+        log(f"    ✖ {e}")
+        return cola.formato_error(str(e)), ""
     lineas, errores, trabajo = [], [], 0
     for h in habs:
         chequear_abort()
         log(f"    · habitación {h}")
+        if not fechas_hab[h]:
+            lineas.append(f"{h}: ninguna fecha dentro de la vigencia (HG): no se cierran tarifas")
+            log(f"    ○ {lineas[-1]}")
+            continue
+        if len(fechas_hab[h]) < len(fechas):
+            log(f"    ℹ allocation HG: tarifas solo hasta la vigencia ({len(fechas_hab[h])} de {len(fechas)} fecha(s))")
+        rangos = agrupar_rangos(fechas_hab[h])
         try:
             _, texto, n = rt.procesar_habitacion(driver, codigo_hotel, h, rangos, aplicar=aplicar)
         except (fl.FlujoError, rates_plan.PlanRatesError) as e:

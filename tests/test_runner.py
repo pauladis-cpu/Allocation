@@ -204,3 +204,22 @@ def test_registro_lee_la_columna_habitaciones_a_cerrar_por_encabezado():
     assert a.tarifas == "OTRO" and a.habitaciones_a_cerrar == "BUEHT6RABA1ST, BUEHT6RABA1TP3"
     # y si la hoja todavía no tiene la columna, todo sigue funcionando
     assert registro.construir_allocations(FILAS, COLS)[0].habitaciones_a_cerrar == ""
+
+
+def test_hg_cierra_tarifas_solo_hasta_la_vigencia():
+    from dataclasses import replace
+    from datetime import date
+    ra = [a for a in ALLOCS if a.codigo_hotel == "6RABA1"][0]
+    fechas = [date(2026, 11, 10), date(2026, 12, 20)]
+    hg = replace(ra, descripcion="HG - Grupo", tarifas="LINKEADA", habitacion="BUEHT6RABA1ST",
+                 cierra_tarifa=True, vigente_hasta=date(2026, 11, 30))
+    comun = replace(hg, descripcion="Allocation común")
+    assert runner.es_hg(hg) and not runner.es_hg(comun)
+    assert not runner.es_hg(replace(hg, descripcion="HGX algo"))
+    assert runner.fechas_de_tarifa(hg, fechas) == [date(2026, 11, 10)]
+    assert runner.fechas_de_tarifa(comun, fechas) == fechas
+    assert runner.fechas_por_habitacion(["BUEHT6RABA1ST"], [hg], fechas) == {"BUEHT6RABA1ST": [date(2026, 11, 10)]}
+    # si otra allocation sin HG pide la misma habitación, se cierran todas las fechas
+    assert runner.fechas_por_habitacion(["BUEHT6RABA1ST"], [hg, comun], fechas) == {"BUEHT6RABA1ST": sorted(fechas)}
+    with pytest.raises(runner.PedidoError, match="HG"):
+        runner.fechas_de_tarifa(replace(hg, vigente_hasta=None, vigente_hasta_txt=""), fechas)
