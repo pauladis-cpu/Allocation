@@ -136,6 +136,11 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
 
 # ── Fase 2: tarifas ────────────────────────────────────────────────────────
 
+def codigos_de(texto):
+    """Códigos largos de una celda, separados por coma, punto y coma o salto de línea."""
+    return [c.strip().replace(" ", "").upper() for c in re.split(r"[,;\n]+", texto or "") if c.strip()]
+
+
 def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
     """None si ninguna allocation del pedido cierra tarifa; si no, la lista (sin repetir) de
     habitaciones: LINKEADA, TODAS (se lee de Tourplan) o la lista de códigos del registro."""
@@ -146,6 +151,10 @@ def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
     por_definir = [a.codigo for a in con if a.tarifas.strip().upper() in ("REVISAR", "")]
     if por_definir:
         raise PedidoError(f"alcance de tarifas por definir (REVISAR) en: {', '.join(por_definir)}")
+    sin_habitaciones = [a.codigo for a in con if a.tarifas.strip().upper() == "OTRO" and not codigos_de(a.habitaciones_a_cerrar)]
+    if sin_habitaciones:
+        raise PedidoError("Tarifas a cerrar = OTRO pero la columna «Habitaciones a cerrar» está vacía en: "
+                          + ", ".join(sin_habitaciones))
     habs, usa_todas = [], False
     for a in con:
         t = a.tarifas.strip().upper()
@@ -156,8 +165,10 @@ def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
             habs.append(h)
         elif t == "TODAS":
             usa_todas = True
+        elif t == "OTRO":
+            habs += codigos_de(a.habitaciones_a_cerrar)          # códigos de la columna «Habitaciones a cerrar»
         else:
-            habs += [c.strip().replace(" ", "").upper() for c in a.tarifas.split(",") if c.strip()]
+            habs += codigos_de(a.tarifas)                        # lista de códigos directamente en «Tarifas a cerrar»
     if usa_todas:
         habs += rt.listar_habitaciones_ht(driver, codigo_hotel)
     return [validar_habitacion(h, codigo_hotel) for h in dict.fromkeys(habs)]

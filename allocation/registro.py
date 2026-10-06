@@ -21,6 +21,7 @@ ENCABEZADOS = {
     "desc_habitacion": "Descripción de la habitación",
     "cierra_tarifa": "Cierra tarifa",
     "tarifas": "Tarifas a cerrar",
+    "habitaciones_a_cerrar": "Habitaciones a cerrar",   # opcional: solo con Tarifas a cerrar = OTRO
     "vigente_hasta": "Vigente hasta",
     "notas": "Notas",
 }
@@ -49,11 +50,12 @@ class AllocationReg:
     habitacion: str            # código largo; "" = allocation vacía; puede ser "Multiple Options"
     desc_habitacion: str
     cierra_tarifa: bool
-    tarifas: str               # LINKEADA | TODAS | códigos largos separados por coma
+    tarifas: str               # LINKEADA | TODAS | OTRO | REVISAR
     vigente_hasta: object      # date | None
     vigente_hasta_txt: str
     notas: str
     fila: int
+    habitaciones_a_cerrar: str = ""   # con OTRO: códigos largos de las habitaciones, separados por coma
 
     @property
     def vacia(self):
@@ -119,6 +121,7 @@ def construir_allocations(filas, columnas):
             vigente_hasta_txt=val(fila, "vigente_hasta"),
             notas=val(fila, "notas"),
             fila=fila.get("__row_idx__", 0),
+            habitaciones_a_cerrar=val(fila, "habitaciones_a_cerrar"),
         )
         if a.codigo or a.hotel or a.codigo_hotel:
             allocs.append(a)

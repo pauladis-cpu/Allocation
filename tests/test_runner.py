@@ -174,3 +174,33 @@ def test_produccion_y_modo_por_fila(monkeypatch):
     assert runner.modo_de({cola.C_MODO: "aplicar"}) == "aplicar" and runner.modo_de({cola.C_MODO: ""}) == "lectura"
     monkeypatch.setattr(runner, "FORZAR_LECTURA", True)
     assert runner.modo_de({cola.C_MODO: "aplicar"}) == "lectura"
+
+
+def test_tarifas_otro_usa_la_columna_habitaciones_a_cerrar(monkeypatch):
+    from dataclasses import replace
+    ra = [a for a in ALLOCS if a.codigo_hotel == "6RABA1"][0]
+    otro = replace(ra, tarifas="OTRO", habitaciones_a_cerrar="BUEHT6RABA1ST, bueht6raba1tp3 ;BUEHT6RABA1ST")
+    # la habitación linkeada sigue siendo una sola (para verificar la allocation); las tarifas salen de la nueva columna
+    assert runner.habitaciones_a_cerrar(None, "6RABA1", [otro]) == ["BUEHT6RABA1ST", "BUEHT6RABA1TP3"]
+    with pytest.raises(runner.PedidoError, match="OTRO.*vacía"):
+        runner.habitaciones_a_cerrar(None, "6RABA1", [replace(ra, tarifas="OTRO", habitaciones_a_cerrar="  ")])
+    with pytest.raises(runner.PedidoError, match="600HTL|excluida"):            # las protecciones siguen valiendo
+        runner.habitaciones_a_cerrar(None, "6RABA1", [replace(otro, habitaciones_a_cerrar="BUEHT6RABA1600HTL")])
+    with pytest.raises(runner.PedidoError, match="HT"):
+        runner.habitaciones_a_cerrar(None, "6RABA1", [replace(otro, habitaciones_a_cerrar="BUEHX6RABA1ST")])
+    # mezclado con otra allocation LINKEADA: unión sin repetir
+    lk = replace(ra, codigo="OTRA", tarifas="LINKEADA")
+    assert runner.habitaciones_a_cerrar(None, "6RABA1", [lk, otro]) == ["BUEHT6RABA1ST", "BUEHT6RABA1TP3"]
+
+
+def test_registro_lee_la_columna_habitaciones_a_cerrar_por_encabezado():
+    cols = COLS[:8] + ["Habitaciones a cerrar"] + COLS[8:]               # entre «Tarifas a cerrar» y «Vigente hasta»
+    filas = [dict(f) for f in FILAS]
+    for f in filas:
+        f["Habitaciones a cerrar"] = ""
+    filas[0]["Tarifas a cerrar"] = "OTRO"
+    filas[0]["Habitaciones a cerrar"] = "BUEHT6RABA1ST, BUEHT6RABA1TP3"
+    a = registro.construir_allocations(filas, cols)[0]
+    assert a.tarifas == "OTRO" and a.habitaciones_a_cerrar == "BUEHT6RABA1ST, BUEHT6RABA1TP3"
+    # y si la hoja todavía no tiene la columna, todo sigue funcionando
+    assert registro.construir_allocations(FILAS, COLS)[0].habitaciones_a_cerrar == ""

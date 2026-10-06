@@ -265,7 +265,9 @@ def _texto_cambio():
 
 def _por_definir(elegidas):
     """Allocations que cierran tarifa pero cuyo alcance sigue en REVISAR: no se pueden enviar."""
-    return [a for a in elegidas if a.cierra_tarifa and a.tarifas.strip().upper() == "REVISAR"]
+    return [a for a in elegidas if a.cierra_tarifa and (
+        a.tarifas.strip().upper() == "REVISAR"
+        or (a.tarifas.strip().upper() == "OTRO" and not a.habitaciones_a_cerrar.strip()))]
 
 
 def _habitacion_txt(a):
@@ -273,7 +275,11 @@ def _habitacion_txt(a):
 
 
 def _tarifa_txt(a):
-    return (a.tarifas if a.cierra_tarifa else "no cierra") or "—"
+    if not a.cierra_tarifa:
+        return "no cierra"
+    if a.tarifas.strip().upper() == "OTRO":
+        return f"OTRO ({a.habitaciones_a_cerrar.strip() or 'sin habitaciones'})"
+    return a.tarifas or "—"
 
 
 def _vigente_txt(a):
@@ -384,7 +390,7 @@ def _ficha_html(hotel):
             f'<div class="mini"><div class="t">{esc(cab)}</div>'
             f'<div class="m">{esc(a.descripcion or a.codigo)}</div>'
             f'<div>Cierra tarifa: {"SI" if a.cierra_tarifa else "NO"}'
-            + (f' · tarifas a cerrar: {esc(a.tarifas)}' if a.cierra_tarifa else "") + '</div>'
+            + (f' · tarifas a cerrar: {esc(_tarifa_txt(a))}' if a.cierra_tarifa else "") + '</div>'
             f'<div>Vigente hasta: {esc(_vigente_txt(a))}</div></div>')
     return "".join(out)
 
@@ -548,8 +554,8 @@ def render_fechas():
         por_definir = _por_definir(elegidas)
         if por_definir:
             st.error("No se puede continuar: " + ", ".join(a.codigo for a in por_definir)
-                     + " cierra tarifa pero su alcance está en REVISAR (falta definir qué habitaciones). "
-                     "Completá «Tarifas a cerrar» en el registro y recargá.")
+                     + " cierra tarifa pero falta definir qué habitaciones (REVISAR, o OTRO sin «Habitaciones a cerrar»). "
+                     "Completá el registro y recargá.")
         with card("origen"):
             st.markdown("**Origen (opcional)**")
             st.text_input("Origen", key="origen", placeholder="Asunto o remitente del mail",
@@ -593,7 +599,7 @@ def _paso_tarifa_html(elegidas):
         elif t == "TODAS":
             alcance.append("todas las habitaciones HT del hotel, excepto " + " y ".join(sorted(EXCLUDED_OPTIONS)))
         else:
-            alcance.append(f"las habitaciones {a.tarifas}")
+            alcance.append("las habitaciones " + (a.habitaciones_a_cerrar if t == "OTRO" else a.tarifas))
     unicos = list(dict.fromkeys(alcance))
     return ("<b>Tarifa convenio.</b> Cierra la tarifa de " + esc(" y de ".join(unicos)) + ", con un período por "
             "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto (un período Terminal pasa a "

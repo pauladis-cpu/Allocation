@@ -76,6 +76,22 @@ Pestañas `ALLOCATIONS` (solo lectura para la app), `COLA` (la app escribe) e
 letra; si falta una columna obligatoria la app lo informa y no modifica el Sheet.
 La columna `Hotel` de COLA es una fórmula del Sheet: la app nunca la escribe.
 
+**«Tarifas a cerrar»** (hoja ALLOCATIONS) admite:
+
+| Valor | Qué cierra en Rates |
+|---|---|
+| `LINKEADA` | solo la habitación linkeada a la allocation |
+| `TODAS` | todas las habitaciones HT del hotel, excepto `600HTL` y `ROOMS` (se lee de Tourplan) |
+| `OTRO` | las habitaciones que figuren en la columna **«Habitaciones a cerrar»** |
+| `REVISAR` | falta definir: el pedido no se puede enviar ni ejecutar |
+
+**«Habitaciones a cerrar»** (columna opcional, la ubicás donde quieras, por ejemplo entre «Tarifas a cerrar» y
+«Vigente hasta») solo se completa con `OTRO`: códigos largos (`location + HT + código de hotel + opción`, ej.
+`IGRHT1MERC1ST`) separados por coma. Si querés cerrar la linkeada **y** otra, escribí las dos. «Habitación
+linkeada (código)» lleva siempre una sola (la que Tourplan tiene linkeada) y no decide qué tarifas se cierran.
+Con `OTRO` y la columna vacía el pedido se frena. Siguen valiendo las protecciones: solo service type `HT`, nunca
+`600HTL` ni `ROOMS`, y la habitación tiene que existir en el Product Find del hotel.
+
 ## Estructura
 
 ```
