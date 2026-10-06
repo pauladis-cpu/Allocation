@@ -296,12 +296,18 @@ def _clic_fila(driver, periodo):
     grilla hasta encontrarla (se reubica por texto en cada posición, nunca por índice). Debe haber
     EXACTAMENTE una; nunca se hace clic por posición."""
     n = _intentar_clic(driver, periodo)
-    if n == 0:
+    for intento in range(3):        # la grilla puede estar recargándose: se reintenta antes de rendirse
+        if n != 0:
+            break
         for pos in _posiciones(driver):
             _scroll_a(driver, pos)
             n = _intentar_clic(driver, periodo)
             if n != 0:
                 break
+        if n == 0 and intento < 2:
+            time.sleep(2.0 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+            n = _intentar_clic(driver, periodo)
     if n != 1:
         try:
             visibles = [f"{f['rango']} {f['pc']} {f['status']}" for f in driver.execute_script(_JS_GRILLA) or []][:10]
@@ -417,15 +423,19 @@ def _guardar_o_salir_periodo(driver):
     for _ in range(3):
         if not driver.find_elements(By.CSS_SELECTOR, SEL_DIALOGO):
             return
-        estado = driver.execute_script(_JS_DLG + """
+        _js_save = _JS_DLG + """
             var s = dlg.querySelector('tp-button.save > button, tp-button.save button');
-            return s ? !s.disabled : null;""")
+            return s ? !s.disabled : null;"""
+        # Save se habilita con retraso tras el OK del split: se espera antes de decidir.
+        _esperar(driver, lambda: driver.execute_script(_js_save), timeout=8)
+        estado = driver.execute_script(_js_save)
         if estado:
             driver.execute_script(_JS_DLG + "dlg.querySelector('tp-button.save button').click();")
             if not _esperar(driver, lambda: not driver.find_elements(By.CSS_SELECTOR, SEL_DIALOGO), timeout=20):
                 raise FlujoError("El diálogo del período no se cerró tras guardar el corte.")
             tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
             return
+        print("    ⚠ Save no se habilitó tras el corte: se sale sin guardar; se relee y se reintenta.", flush=True)
         cerrar_dialogo(driver)
         return
 
@@ -551,14 +561,31 @@ def editar_periodo(driver, cod_largo, ed):
 
 # ── Una habitación completa ─────────────────────────────────────────────────
 
+def leer_periodos_completo(driver, rangos, minimo=0, intentos=4):
+    """Lee la grilla y, si trae menos filas que las vistas antes (recarga asíncrona tras guardar),
+    espera y relee."""
+    periodos = leer_periodos(driver, rangos)
+    for _ in range(intentos - 1):
+        if len(periodos) >= minimo:
+            break
+        time.sleep(2.0 * tp.VELOCIDAD)
+        tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+        periodos = leer_periodos(driver, rangos)
+    if len(periodos) < minimo:
+        print(f"    ⚠ La grilla trae {len(periodos)} fila(s) y antes se vieron {minimo}; se sigue con lo leído.", flush=True)
+    return periodos
+
+
 def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, max_iteraciones=60):
     """Abre la habitación y cierra sus tarifas para los rangos de fechas.
     Devuelve (plan_final, texto, cantidad_a_cerrar_o_cerrados). En lectura solo planea. Si hace falta cortar, en lectura se
     informa el corte sin hacerlo; en aplicar se corta, se relee y se replanea."""
     abrir_habitacion(driver, codigo_hotel, cod_hab)
     hechas = cortes = 0
+    vistas = 0
     for _ in range(max_iteraciones):
-        periodos = leer_periodos(driver, rangos)
+        periodos = leer_periodos_completo(driver, rangos, minimo=vistas)
+        vistas = max(vistas, len(periodos))
         plan = rp.planear(periodos, rangos)
         print(f"    → grilla de Rates: {len(periodos)} fila(s); a editar {len(plan.ediciones)}, "
               f"cortes pendientes {len(plan.cortes)}, ya cerradas {len(plan.ya_cerrados)}", flush=True)

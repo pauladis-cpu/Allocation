@@ -303,7 +303,10 @@ HTML_SPLIT = r"""
       if (chk) chk.addEventListener('change', () => window.log.push('casilla:' + chk.checked));
       add.addEventListener('click', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/), f = new Date(2000 + +m[3], +m[2]-1, +m[1]), a = new Date(f); a.setDate(a.getDate() - 1);
         s.querySelector('ul.dateranges').innerHTML = '<li><span class="date-range-display">Tue 01/Dec/2026 - Tue ' + fmt(a) + '</span></li><li><span class="date-range-display">Wed ' + fmt(f) + ' - Fri 25/Dec/2026</span></li>'; });
-      s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + inp.value + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove(); });
+      s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + inp.value + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove();
+        const sv = d.querySelector('tp-button.save button');
+        setTimeout(() => { sv.disabled = false; }, 1500);
+        sv.addEventListener('click', () => { window.log.push('guardado'); d.remove(); }); });
     });
   });
 </script></body></html>
@@ -322,7 +325,7 @@ def test_split_tilda_la_casilla_solo_si_aparece(con_casilla):
         per = rt.leer_periodos(d)[0]
         rt.hacer_corte(d, HAB, per, date(2026, 12, 10))
         log = pg.evaluate("window.log")
-        assert log[-1] == "ok:10/12/26:todos=" + ("true" if con_casilla else "sin-casilla")
+        assert log[-2:] == ["ok:10/12/26:todos=" + ("true" if con_casilla else "sin-casilla"), "guardado"]
         assert d.find_elements(None, "body > tp-dialog") == []          # se cerraron el split y el período
         b.close()
 
@@ -348,3 +351,11 @@ def test_error_de_fila_no_encontrada_informa_las_filas_a_la_vista(drv):
     inexistente = rp.Periodo(date(2030, 1, 1), date(2030, 1, 2), "TR", "Confirmed", "Standard")
     with pytest.raises(FlujoError, match="Filas a la vista.*01/Dec/2026"):
         rt._clic_fila(drv, inexistente)
+
+
+def test_lectura_completa_reintenta_si_la_grilla_trae_menos_filas(monkeypatch):
+    lecturas = [[1], [1, 2], [1, 2, 3]]
+    monkeypatch.setattr(rt, "leer_periodos", lambda d, r=None: lecturas.pop(0))
+    monkeypatch.setattr(rt.tp, "esperar_fin_carga", lambda *a, **k: None)
+    monkeypatch.setattr(rt.time, "sleep", lambda s: None)
+    assert rt.leer_periodos_completo(None, [], minimo=3) == [1, 2, 3]
