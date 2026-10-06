@@ -131,13 +131,18 @@ def test_fuera_del_rango_no_frena():
     assert plan.ediciones == [] and plan.sin_periodo[0] == D(2026, 12, 10)
 
 
-def test_rate_name_o_status_raros_frenan():
-    with pytest.raises(r.PlanRatesError):
-        r.planear([P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Confirmed", "Promo")], [(D(2026, 12, 10), D(2026, 12, 12))])
+def test_status_ambiguo_o_desconocido_frena():
     with pytest.raises(r.PlanRatesError):
         r.normalizar_status("Confirmed Manual")
     with pytest.raises(r.PlanRatesError):
         r.normalizar_status("Algo")
+
+
+def test_el_rate_name_no_influye_en_el_cierre():
+    for nombre in ("Standard", "Promo", "", "Cualquier cosa"):
+        g = [P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Confirmed", nombre)]
+        plan = r.planear(g, [(D(2026, 12, 1), D(2026, 12, 25))])
+        assert [(e.periodo.pc, e.nuevo_status) for e in plan.ediciones] == [("TR", "Manual")]
 
 
 def test_idempotente_todo_cerrado():

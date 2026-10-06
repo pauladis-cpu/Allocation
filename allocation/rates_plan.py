@@ -22,7 +22,6 @@ from allocation.constantes import PRICE_CODES_MANUAL
 
 CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL = "Confirmed", "Provisional", "Terminal", "Closed", "Manual"
 STATUS_CONOCIDOS = {s.casefold(): s for s in (CONFIRMED, PROVISIONAL, TERMINAL, CLOSED, MANUAL)}
-RATE_NAME_ESPERADO = "standard"
 PRICE_CODE_INTOCABLE = "FX"   # nunca se le cambia la tarifa ni el status (sí puede cortarse)
 
 
@@ -36,7 +35,7 @@ class Periodo:
     fin: date
     pc: str
     status: str
-    rate_name: str = "Standard"
+    rate_name: str = ""     # no influye en si se cierra o no: solo distingue filas con el mismo período y price code
 
 
 @dataclass(frozen=True)
@@ -122,9 +121,6 @@ def planear(periodos, rangos):
         if es_intocable(p.pc):
             plan.intocables.append(p)          # FX: no se evalúa ni se edita (puede cortarse junto con los demás)
             continue
-        if p.rate_name.strip().casefold() != RATE_NAME_ESPERADO:
-            raise PlanRatesError(
-                f"Rate Name {p.rate_name!r} en {p.ini:%d/%m/%Y}-{p.fin:%d/%m/%Y} ({p.pc}): se esperaba Standard.")
         nuevo = decidir_status(normalizar_status(p.status), p.pc)
         if nuevo is None:
             plan.ya_cerrados.append(p)

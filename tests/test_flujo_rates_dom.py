@@ -177,12 +177,12 @@ def test_grilla_de_periodos_con_scroll_virtual_se_lee_completa(drv_virtual):
 
 
 def test_clic_en_una_fila_fuera_de_pantalla_hace_scroll_y_la_encuentra(drv_virtual):
-    lejana = rp.Periodo(date(2026, 11, 25), date(2026, 11, 25), "TR", "Confirmed")
+    lejana = rp.Periodo(date(2026, 11, 25), date(2026, 11, 25), "TR", "Confirmed", "Standard")
     # el diálogo no existe en este mock: solo comprobamos que localizó y clickeó la fila exacta
     with pytest.raises(FlujoError, match="No se abrió el diálogo"):
         rt._clic_fila(drv_virtual, lejana)
     assert drv_virtual.execute_script("return window.abierto;").startswith("25/Nov/2026")
-    inexistente = rp.Periodo(date(2027, 1, 1), date(2027, 1, 1), "TR", "Confirmed")
+    inexistente = rp.Periodo(date(2027, 1, 1), date(2027, 1, 1), "TR", "Confirmed", "Standard")
     with pytest.raises(FlujoError, match="0 filas"):
         rt._clic_fila(drv_virtual, inexistente)
 
@@ -258,3 +258,14 @@ def test_editar_periodo_de_fx_se_niega_sin_abrir_el_dialogo(drv):
     with pytest.raises(rp.PlanRatesError, match="FX"):
         rt.editar_periodo(drv, HAB, rp.Edicion(fx, "Closed"))
     assert drv.find_elements(None, "body > tp-dialog") == []                 # ni siquiera se abrió
+
+
+def test_filas_con_el_mismo_periodo_y_price_code_pero_distinto_rate_name_se_distinguen(drv):
+    drv.page.evaluate("""() => { const tb = document.getElementById('tb'), c = tb.rows[0].cloneNode(true);
+        c.querySelector('.tpcol-ratenames').textContent = 'Promo'; tb.appendChild(c); }""")     # TR Standard + TR Promo
+    ps = [p for p in rt.leer_periodos(drv) if p.pc == "TR" and p.ini == date(2026, 12, 1)]
+    assert sorted(p.rate_name for p in ps) == ["Promo", "Standard"]
+    promo = next(p for p in ps if p.rate_name == "Promo")
+    rt.editar_periodo(drv, HAB, rp.Edicion(promo, "Manual"))
+    estados = {p.rate_name: p.status for p in rt.leer_periodos(drv) if p.pc == "TR" and p.ini == date(2026, 12, 1)}
+    assert estados == {"Standard": "Confirmed", "Promo": "Manual"}          # se abrió y editó solo la fila Promo

@@ -270,19 +270,23 @@ def leer_periodos(driver, rangos=None):
 
 
 def _intentar_clic(driver, periodo):
-    """Clic en td.tpcol-rateperiod de la fila (rango, price code) ENTRE LAS FILAS RENDERIZADAS.
-    Atómico: se ubica y se hace clic en la misma ejecución. Devuelve cuántas filas coinciden."""
+    """Clic en td.tpcol-rateperiod de la fila (rango, price code, Rate Name) ENTRE LAS FILAS RENDERIZADAS.
+    Atómico: se ubica y se hace clic en la misma ejecución. El Rate Name no decide si se cierra, pero sí
+    distingue dos filas con el mismo período y price code. Devuelve cuántas filas coinciden."""
     return driver.execute_script("""
-        var a = arguments[0], b = arguments[1], pc = arguments[2];
+        var a = arguments[0], b = arguments[1], pc = arguments[2], nombre = arguments[3];
         var th = document.querySelector('th.tpcol-RatePeriod'); if (!th) return -1;
         var tabla = th.closest('table'); var norm = function(s){ return (s||'').replace(/\\s+/g,' ').trim(); };
         var ok = Array.from(tabla.querySelectorAll('tbody tr')).filter(function(tr){
             var r = tr.querySelector('td.tpcol-rateperiod'), p = tr.querySelector('td.tpcol-pricecodecode');
             if (!r || !p || norm(p.textContent).toUpperCase() !== pc) return false;
+            var n = tr.querySelector('td.tpcol-ratenames');
+            if (norm(n ? n.textContent : '').toLowerCase() !== nombre) return false;
             var m = norm(r.textContent).match(/(\\d+\\/\\w+\\/\\d+)\\s*[-–]\\s*(\\d+\\/\\w+\\/\\d+)/);
             return m && m[1].toLowerCase() === a && m[2].toLowerCase() === b; });
         if (ok.length === 1) { ok[0].querySelector('td.tpcol-rateperiod').click(); }
-        return ok.length;""", tp.fmt_tp(_dt(periodo.ini)).casefold(), tp.fmt_tp(_dt(periodo.fin)).casefold(), periodo.pc.upper())
+        return ok.length;""", tp.fmt_tp(_dt(periodo.ini)).casefold(), tp.fmt_tp(_dt(periodo.fin)).casefold(),
+        periodo.pc.upper(), " ".join((periodo.rate_name or "").split()).lower())
 
 
 def _clic_fila(driver, periodo):

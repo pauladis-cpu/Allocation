@@ -36,7 +36,7 @@ Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecut
 - Closed se saltea y **nunca** pasa a Manual. Manual pasa a Closed salvo en TR, ND y EM.
 - Al price code **FX nunca se le cambia la tarifa ni el status**. Su período sí puede cortarse (split):
   si comparte el período con otros price codes, el corte con «Split All Applicable Price Codes» lo corta también.
-- Se sigue frenando el pedido si el status de la grilla es ambiguo o el Rate Name no es `Standard`.
+- Se sigue frenando el pedido si el status de la grilla es ambiguo. El **Rate Name no influye**: no frena ni decide si se cierra.
 
 **Producción:** el modo aplicar se niega a escribir en Producción salvo que, en la Configuración, el
 entorno sea Producción **y** esté tildada la autorización explícita. Por defecto está destildada.
