@@ -237,7 +237,7 @@ def test_terminal_y_provisional_se_editan_segun_las_reglas(drv):
         s[0].textContent = 'Terminal'; s[1].textContent = 'Provisional'; }""")   # TR Terminal, RACK Provisional
     rangos = [(date(2026, 12, 1), date(2026, 12, 25))]
     plan = rp.planear(rt.leer_periodos(drv, rangos), rangos)
-    assert {(e.periodo.pc, e.nuevo_status) for e in plan.ediciones} == {("TR", "Closed"), ("RACK", "Closed")}
+    assert {(e.periodo.pc, e.nuevo_status) for e in plan.ediciones} == {("TR", "Closed"), ("RACK", "Closed")}   # Terminal -> Closed
     for e in plan.ediciones:
         rt.editar_periodo(drv, HAB, e)
     assert [p.status for p in rt.leer_periodos(drv, rangos)] == ["Closed", "Closed", "Closed"]
@@ -325,3 +325,26 @@ def test_split_tilda_la_casilla_solo_si_aparece(con_casilla):
         assert log[-1] == "ok:10/12/26:todos=" + ("true" if con_casilla else "sin-casilla")
         assert d.find_elements(None, "body > tp-dialog") == []          # se cerraron el split y el período
         b.close()
+
+
+def test_terminal_em_pasa_a_manual(drv):
+    drv.page.evaluate("""() => { const tr = document.querySelectorAll('#tb tr')[0];
+        tr.querySelector('.tpcol-pricecodecode').textContent = 'EM'; tr.querySelector('.tpcol-ratestatuses').textContent = 'Terminal'; }""")
+    rangos = [(date(2026, 12, 1), date(2026, 12, 25))]
+    e = next(e for e in rp.planear(rt.leer_periodos(drv, rangos), rangos).ediciones if e.periodo.pc == "EM")
+    assert e.nuevo_status == "Manual"
+    rt.editar_periodo(drv, HAB, e)
+    assert next(p for p in rt.leer_periodos(drv, rangos) if p.pc == "EM").status == "Manual"
+
+
+def test_la_fila_se_encuentra_aunque_el_rate_name_leido_no_coincida(drv):
+    """El Rate Name no decide si una fila existe: solo desempata. Una fila única (rango + price code) siempre se abre."""
+    raro = rp.Periodo(date(2026, 12, 1), date(2026, 12, 25), "RACK", "Confirmed", "nombre que no coincide")
+    rt.editar_periodo(drv, HAB, rp.Edicion(raro, "Closed"))
+    assert next(p for p in rt.leer_periodos(drv) if p.pc == "RACK").status == "Closed"
+
+
+def test_error_de_fila_no_encontrada_informa_las_filas_a_la_vista(drv):
+    inexistente = rp.Periodo(date(2030, 1, 1), date(2030, 1, 2), "TR", "Confirmed", "Standard")
+    with pytest.raises(FlujoError, match="Filas a la vista.*01/Dec/2026"):
+        rt._clic_fila(drv, inexistente)

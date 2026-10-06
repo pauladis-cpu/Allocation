@@ -270,9 +270,9 @@ def leer_periodos(driver, rangos=None):
 
 
 def _intentar_clic(driver, periodo):
-    """Clic en td.tpcol-rateperiod de la fila (rango, price code, Rate Name) ENTRE LAS FILAS RENDERIZADAS.
-    Atómico: se ubica y se hace clic en la misma ejecución. El Rate Name no decide si se cierra, pero sí
-    distingue dos filas con el mismo período y price code. Devuelve cuántas filas coinciden."""
+    """Clic en td.tpcol-rateperiod de la fila (rango, price code) ENTRE LAS FILAS RENDERIZADAS.
+    Atómico: se ubica y se hace clic en la misma ejecución. El Rate Name NO decide si una fila existe: solo
+    desempata cuando hay más de una fila con el mismo período y price code. Devuelve cuántas coinciden."""
     return driver.execute_script("""
         var a = arguments[0], b = arguments[1], pc = arguments[2], nombre = arguments[3];
         var th = document.querySelector('th.tpcol-RatePeriod'); if (!th) return -1;
@@ -280,10 +280,12 @@ def _intentar_clic(driver, periodo):
         var ok = Array.from(tabla.querySelectorAll('tbody tr')).filter(function(tr){
             var r = tr.querySelector('td.tpcol-rateperiod'), p = tr.querySelector('td.tpcol-pricecodecode');
             if (!r || !p || norm(p.textContent).toUpperCase() !== pc) return false;
-            var n = tr.querySelector('td.tpcol-ratenames');
-            if (norm(n ? n.textContent : '').toLowerCase() !== nombre) return false;
             var m = norm(r.textContent).match(/(\\d+\\/\\w+\\/\\d+)\\s*[-–]\\s*(\\d+\\/\\w+\\/\\d+)/);
             return m && m[1].toLowerCase() === a && m[2].toLowerCase() === b; });
+        if (ok.length > 1) {   // varias filas iguales en período y price code: se desempata por Rate Name
+            ok = ok.filter(function(tr){ var n = tr.querySelector('td.tpcol-ratenames');
+                return norm(n ? n.textContent : '').toLowerCase() === nombre; });
+        }
         if (ok.length === 1) { ok[0].querySelector('td.tpcol-rateperiod').click(); }
         return ok.length;""", tp.fmt_tp(_dt(periodo.ini)).casefold(), tp.fmt_tp(_dt(periodo.fin)).casefold(),
         periodo.pc.upper(), " ".join((periodo.rate_name or "").split()).lower())
@@ -301,7 +303,12 @@ def _clic_fila(driver, periodo):
             if n != 0:
                 break
     if n != 1:
-        raise FlujoError(f"Período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y} ({periodo.pc}): {n} filas coinciden.")
+        try:
+            visibles = [f"{f['rango']} {f['pc']} {f['status']}" for f in driver.execute_script(_JS_GRILLA) or []][:10]
+        except Exception:
+            visibles = []
+        raise FlujoError(f"Período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y} ({periodo.pc}): {n} filas coinciden. "
+                         f"Filas a la vista: {visibles}")
     if not _esperar(driver, lambda: driver.find_elements(By.CSS_SELECTOR, SEL_DIALOGO), timeout=15):
         raise FlujoError("No se abrió el diálogo del período.")
     time.sleep(1.0 * tp.VELOCIDAD)

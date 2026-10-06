@@ -7,7 +7,7 @@ Reglas:
   - Status objetivo: Manual para TR/ND/EM, Closed para el resto.
   - Closed -> se saltea. Manual -> se saltea si el objetivo es Manual, si no pasa a Closed.
     Confirmed y Provisional -> pasan al objetivo (TR/ND/EM a Manual, el resto a Closed).
-    Terminal -> pasa a Closed sin importar el price code.
+    Terminal -> pasa a Closed, salvo EM que pasa a Manual.
   - El price code FX NUNCA se edita (ni tarifa ni status). Su período SÍ puede cortarse (split).
   - Un período en Closed NUNCA pasa a Manual (dos barreras: acá y justo antes del clic).
   - Un período por rango consecutivo. No se fusionan períodos existentes.
@@ -82,7 +82,7 @@ def decidir_status(actual, pc):
     if es_intocable(pc) or actual == CLOSED:
         return None
     if actual == TERMINAL:
-        return CLOSED                      # Terminal -> Closed, sin importar el price code
+        return MANUAL if (pc or "").strip().upper() == "EM" else CLOSED     # Terminal -> Closed; EM -> Manual
     objetivo = status_objetivo(pc)
     if actual == MANUAL:
         return None if objetivo == MANUAL else CLOSED

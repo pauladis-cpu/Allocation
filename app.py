@@ -601,7 +601,7 @@ def _paso_tarifa_html(elegidas):
     unicos = list(dict.fromkeys(alcance))
     return ("<b>Tarifa convenio.</b> Cierra la tarifa de " + esc(" y de ".join(unicos)) + ", con un período por "
             "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto (un período Terminal pasa a "
-            "Closed sin importar el price code). Lo que ya está cerrado se saltea, un período en Closed nunca pasa "
+            "Closed, salvo EM que pasa a Manual). Lo que ya está cerrado se saltea, un período en Closed nunca pasa "
             "a Manual y al price code FX nunca se le cambia la tarifa ni el status (sí puede cortarse).")
 
 

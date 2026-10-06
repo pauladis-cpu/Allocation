@@ -72,9 +72,11 @@ def test_provisional_se_procesa_como_confirmed():
     assert r.decidir_status("Provisional", "RACK") == "Closed"
 
 
-def test_terminal_pasa_a_closed_sin_importar_el_price_code():
-    for pc in ("TR", "ND", "EM", "RACK", "X"):
+def test_terminal_pasa_a_closed_salvo_em_que_pasa_a_manual():
+    for pc in ("TR", "ND", "RACK", "X"):
         assert r.decidir_status("Terminal", pc) == "Closed"
+    assert r.decidir_status("Terminal", "EM") == "Manual"
+    assert r.decidir_status("Terminal", "em") == "Manual"
 
 
 def test_fx_nunca_se_edita():
