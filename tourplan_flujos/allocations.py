@@ -12,7 +12,7 @@ virtual se releen por su etiqueta de fecha, nunca por índice ni referencia.
 
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -276,7 +276,9 @@ def verificar_columnas_dias(driver):
                 var c = (l.htmlFor && dlg.querySelector('#' + CSS.escape(l.htmlFor))) ||
                         l.querySelector('input[type=checkbox]') ||
                         (l.parentElement && l.parentElement.querySelector('input[type=checkbox]'));
-                if (c) rel = c.checked;
+                // en Tourplan el id está en <tp-checkbox>; el estado está en el <input> de adentro
+                if (c && c.tagName !== 'INPUT') c = c.querySelector('input[type=checkbox]');
+                if (c) rel = !!c.checked;
             }
         });
         return {grupos: grupos, rel: rel};
@@ -412,3 +414,152 @@ def preparar_hotel(driver, codigo_hotel, hoy=None):
     abrir_supplier(driver, codigo_hotel)
     abrir_menu_allocations(driver)
     filtrar_hasta(driver, hoy or date.today())
+
+
+# ── Filtro "Date To" del propio diálogo (por defecto muestra solo ~1 mes) ──────
+
+def filtrar_dias_hasta(driver, hasta, hoy=None):
+    """La grilla de días del diálogo trae su propio filtro Date From / Date To (por defecto
+    hoy + 1 mes). Sin ampliarlo, las fechas posteriores se verían como 'sin fila'.
+    Pone Date To = hasta (tope: hoy + 2 años), verifica el valor y aprieta Filter.
+    Solo cambia lo que se muestra; no escribe datos."""
+    hoy = hoy or date.today()
+    try:
+        tope = hoy.replace(year=hoy.year + WINDOW_YEARS)
+    except ValueError:
+        tope = hoy.replace(year=hoy.year + WINDOW_YEARS, day=28)
+    hasta = min(hasta, tope)
+    actual = driver.execute_script(_JS_DLG + """
+        var h = dlg.querySelector('#days-tab tp-date#dateto input.tphidden'); return h ? h.value : null;""")
+    if actual is not None and _fecha_tp(actual) is not None and _fecha_tp(actual) >= hasta:
+        return
+    inp = driver.execute_script(_JS_DLG + "return dlg.querySelector('#days-tab input.tpdate-dateto');")
+    if inp is None:
+        raise FlujoError("No encontré el filtro 'Date To' de la grilla de días.")
+    tp.set_val_con_blur(driver, inp, f"{hasta.day:02d}/{hasta.month:02d}/{hasta.year % 100:02d}")
+    time.sleep(0.8 * tp.VELOCIDAD)
+    oculto = driver.execute_script(_JS_DLG + """
+        var h = dlg.querySelector('#days-tab tp-date#dateto input.tphidden'); return h ? h.value : null;""")
+    if _fecha_tp(oculto) != hasta:
+        raise FlujoError(f"El 'Date To' de la grilla quedó en {oculto!r}, se esperaba {hasta:%d/%m/%Y}.")
+    ok = driver.execute_script(_JS_DLG + """
+        var b = dlg.querySelector('#days-tab tp-button.filter button'); if (!b) return false; b.click(); return true;""")
+    if not ok:
+        raise FlujoError("No encontré el botón Filter de la grilla de días.")
+    time.sleep(1.5 * tp.VELOCIDAD)
+    tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+
+
+# ── Escritura (ETAPA 3: solo se usa en modo aplicar) ────────────────────────
+
+def _inputs_de_fecha(driver, fecha):
+    """(max_input, release_input) de la fila cuya ETIQUETA de fecha coincide. Se relee por
+    etiqueta cada vez (grilla virtual): nunca por índice ni referencia guardada."""
+    etiqueta = tp.fmt_tp(datetime.combine(fecha, datetime.min.time())).casefold()
+    return driver.execute_script(_JS_DLG + """
+        var etq = arguments[0];
+        var vp = dlg.querySelector('#days-tab cdk-virtual-scroll-viewport'); if (!vp) return null;
+        var fila = Array.from(vp.querySelectorAll('div.tpbodyrow')).find(function(r){
+            var l = r.querySelector('.datecol.date label');
+            return l && l.textContent.trim().toLowerCase() === etq; });
+        return fila ? [fila.querySelector('span.max input'), fila.querySelector('span.release input')] : null;
+    """, etiqueta)
+
+
+def _esperar_save(driver, habilitado, timeout=15):
+    def estado():
+        b = driver.execute_script(_JS_DLG + """
+            var b = dlg.querySelector('tp-button.save > button, tp-button.save button');
+            return b ? !b.disabled : null;""")
+        return b is not None and bool(b) == habilitado
+    return _esperar(driver, estado, timeout=timeout)
+
+
+def descartar_cambios(driver):
+    """Si algo falla antes de Save: Discard (si está habilitado) para no dejar cambios a medias."""
+    try:
+        driver.execute_script(_JS_DLG + """
+            var b = dlg.querySelector('tp-button.discard button'); if (b && !b.disabled) b.click();""")
+        time.sleep(0.8 * tp.VELOCIDAD)
+    except Exception:
+        pass
+
+
+def aplicar_dias(driver, acciones, fechas_hasta=None):
+    """Escribe Max/Release de las acciones CERRAR, guarda y verifica releyendo.
+    Antes de cada escritura RELEE la fila y vuelve a decidir: si lo que hay ya no coincide
+    con lo planeado, se frena (nunca se reabre ni se sube Max fuera del caso permitido)."""
+    from allocation import plan as pl
+    hechas = []
+    try:
+        for a in acciones:
+            if a.tipo != pl.CERRAR:
+                continue
+            dia = leer_dias(driver, [a.fecha]).get(a.fecha)
+            if dia is None:
+                raise FlujoError(f"{a.fecha:%d/%m/%Y}: la fila ya no está en la grilla.")
+            fresca = pl.planear_dia(dia)
+            if (fresca.tipo, fresca.nuevo_max, fresca.nuevo_release) != (a.tipo, a.nuevo_max, a.nuevo_release):
+                raise FlujoError(f"{a.fecha:%d/%m/%Y}: cambió desde la lectura ({dia}); se frena.")
+            pl.verificar_no_reabre(dia, fresca)
+            campos = _inputs_de_fecha(driver, a.fecha)
+            if not campos or not campos[0] or not campos[1]:
+                raise FlujoError(f"{a.fecha:%d/%m/%Y}: no pude ubicar Max/Release por la etiqueta de fecha.")
+            if a.nuevo_max is not None:
+                tp.set_val_con_blur(driver, campos[0], str(int(a.nuevo_max)))
+            if a.nuevo_release is not None:
+                tp.set_val_con_blur(driver, campos[1], str(int(a.nuevo_release)))  # 9999, sin coma
+            time.sleep(0.3 * tp.VELOCIDAD)
+            despues = leer_dias(driver, [a.fecha]).get(a.fecha)
+            esperado_max = a.nuevo_max if a.nuevo_max is not None else dia.max
+            esperado_rel = a.nuevo_release if a.nuevo_release is not None else dia.release
+            if despues is None or (despues.max, despues.release) != (esperado_max, esperado_rel):
+                raise FlujoError(f"{a.fecha:%d/%m/%Y}: tras escribir quedó {despues}, se esperaba "
+                                 f"Max={esperado_max} Release={esperado_rel}.")
+            hechas.append(a)
+        if not hechas:
+            return []
+        if not _esperar_save(driver, True):
+            raise FlujoError("El botón Save no se habilitó tras escribir.")
+        driver.execute_script(_JS_DLG + """
+            var b = dlg.querySelector('tp-button.save button'); b.click();""")
+        if not _esperar_save(driver, False, timeout=20):
+            raise FlujoError("Save no terminó (el botón no volvió a deshabilitarse).")
+        tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+        # verificación final, ya guardado
+        for a in hechas:
+            d = leer_dias(driver, [a.fecha]).get(a.fecha)
+            if d is None or pl.planear_dia(d).tipo != pl.YA_CERRADA:
+                raise FlujoError(f"{a.fecha:%d/%m/%Y}: después de guardar no figura cerrada ({d}).")
+        return hechas
+    except Exception:
+        descartar_cambios(driver)
+        raise
+
+
+def cerrar_allocation(driver, alloc, codigo_hotel, fechas, aplicar=False, hoy=None):
+    """Una allocation completa: abre, verifica, amplía el filtro de fechas, lee, planea y,
+    solo si aplicar=True, escribe y guarda. SIEMPRE sale con Exit.
+    Devuelve (acciones | None, observaciones). acciones=None => allocation vacía."""
+    from allocation import plan as pl
+    abrir_allocation(driver, alloc.codigo, alloc.descripcion)
+    try:
+        habitaciones = leer_habitaciones(driver, codigo_hotel)
+        if alloc.vacia:
+            if habitaciones or cantidad_filas_dias(driver) > 0:
+                raise FlujoError(
+                    "El registro dice 'allocation vacía' pero Tourplan tiene "
+                    f"{len(habitaciones)} habitación(es) y {cantidad_filas_dias(driver)} día(s) cargados.")
+            return None, "allocation vacía"
+        ok, obs = verificar_habitacion(alloc.habitacion, habitaciones)
+        if not ok:
+            raise FlujoError(obs)
+        verificar_columnas_dias(driver)
+        filtrar_dias_hasta(driver, max(fechas), hoy)
+        dias = leer_dias(driver, fechas)
+        acciones = pl.planear(dias, fechas)
+        if aplicar:
+            aplicar_dias(driver, acciones)
+        return acciones, obs
+    finally:
+        cerrar_dialogo(driver)

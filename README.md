@@ -13,20 +13,25 @@ de entorno + config por PC + OAuth de Google con gspread).
 
 | Etapa | Contenido | Estado |
 |---|---|---|
-| 1 | Lectura del Sheet, pantallas 1 a 3, escritura de pedidos en COLA (sin Selenium) | **hecha** |
-| 2 | Selenium en modo lectura contra Tourplan de prueba (allocations) | **hecha, sin probar en Tourplan real** |
-| 3 | Aplicar allocations (prueba) | pendiente |
-| 4–5 | Rates en lectura / aplicar (prueba) | pendiente |
-| 6 | Cola completa (tomar pedidos, EN CURSO, "Enviar y ejecutar") | pendiente |
-| 7 | Endurecimiento | pendiente |
+| 1 | Lectura del Sheet, pantallas, escritura de pedidos en COLA | **hecha** |
+| 2 | Lectura de allocations en Tourplan (modo lectura) | **hecha, probada en Test** |
+| 3 | Aplicar allocations (Max/Release, Save, verificación, idempotencia) | **hecha, sin probar en Tourplan real** |
+| 4 | Rates en lectura (grilla de períodos, cortes y ediciones calculados) | **hecha, sin probar en Tourplan real** |
+| 5 | Rates en aplicar (split, tarifa en 0, status, Save) | **hecha, sin probar en Tourplan real** |
+| 6 | Cola completa (toma de pedidos, EN CURSO, «Enviar y ejecutar», «Ejecutar pendientes») | **hecha, sin probar en Tourplan real** |
+| 7 | Endurecimiento (errores, logs, reintentos) | pendiente |
 
-«Enviar y ejecutar» y «Ejecutar pendientes» siguen deshabilitados hasta la etapa 6.
-**Nada se escribe en Tourplan.** En la pantalla Cola, «Leer plan (lectura)» abre
-Tourplan, lee las allocations de los pedidos PENDIENTE y deja el plan en
-`OBSERVACIONES_CIERRE_ALLOTMENT` (no cambia ESTADO ni toma el pedido). El módulo
-de Selenium de esta etapa no tiene ninguna función que escriba Max/Release ni Save.
-Los selectores salen de la especificación y de las grabaciones: hay que validarlos
-contra el Tourplan de prueba (ver «Etapa 2: cómo probar»).
+Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecutar» (ese pedido) y
+«Ejecutar pendientes» (todos) lanzan `runner.py`, que usa el **MODO de cada fila**:
+
+- **lectura**: no escribe nada en Tourplan, no toma el pedido ni cambia estados; deja el plan en
+  `OBSERVACIONES_CIERRE_ALLOTMENT` y `OBSERVACIONES_CIERRE_TARIFA`.
+- **aplicar**: toma el pedido (`EN CURSO` / `TOMADO_POR` / `TOMADO_EN`, con relectura para varias PCs),
+  cierra las fechas en la allocation y después las tarifas, y deja `OK` / `SALTEADO` / `ERROR: detalle`
+  por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
+
+**Producción:** el modo aplicar se niega a escribir en Producción salvo que, en la Configuración, el
+entorno sea Producción **y** esté tildada la autorización explícita. Por defecto está destildada.
 
 ## Cómo correrla
 
@@ -76,9 +81,11 @@ allocation/
   registro.py           Lee ALLOCATIONS, agrupa por hotel, busca
   cola.py               Arma y escribe pedidos en COLA, lee y clasifica estados
   plan.py               Decisión por fecha (Used/Max/Release), con barrera «nunca reabrir»
+  rates_plan.py         Decisión de tarifas: price codes, status, cortes y ediciones (sin Selenium)
 tourplan_flujos/
-  allocations.py        Selenium (solo lectura): supplier, menú, filtro, allocation, días
-runner.py               Proceso hijo que lee los pedidos PENDIENTE en Tourplan (modo lectura)
+  allocations.py        Selenium: supplier, menú, filtro, allocation, días; escritura solo en modo aplicar
+  rates.py              Selenium: habitación (Product Find), grilla de períodos, cortes, edición
+runner.py               Proceso hijo: ejecuta los pedidos de la cola según el MODO de cada fila
 common/
   tourplan.py           Helpers Selenium (copiados de la referencia): login/logout, esperas, set_val
   abort.py, chrome_bootstrap.py   Copias sin cambios de Drive-TP-NX-App
@@ -94,14 +101,23 @@ tests/                  Pruebas unitarias de la lógica pura y de la escritura e
   o el siguiente si el mes ya pasó (en octubre, `5/1` es enero próximo).
 - Texto normalizado de la cola: `2026-10-08; 2026-10-20..2026-10-23`.
 
-## Etapa 2: cómo probar contra Tourplan de prueba
+## Cómo probar el proceso completo en Tourplan de prueba
 
-1. En la Configuración (tu nombre, arriba a la derecha): usuario/password de Test, entorno `test`, tu nombre.
-2. Cargá en Test un hotel del registro (ej. `6RABA1` con su allocation `Standard` /
-   `Standard CIERRA DATABASE` y la habitación `BUEHT6RABA1ST`).
-3. Enviá un pedido en modo lectura a la cola y, en la pestaña Cola, «Leer plan (lectura)».
-4. Mirá el log y `OBSERVACIONES_CIERRE_ALLOTMENT`. Si algún selector no coincide, el log
-   dice en qué paso se frenó y se guarda una captura en la carpeta temporal de la corrida.
+Hacelo en este orden, siempre en el entorno `test` y con una fecha de prueba que no importe:
+
+1. **Lectura** de un hotel con allocation y tarifa (ej. `6RABA1`): mirá `OBSERVACIONES_*` de la cola.
+2. **Aplicar solo allocation**: un hotel que no cierre tarifa (ej. `1EDE01`) con una fecha. Verificá en
+   Tourplan Max/Release. Volvé a ejecutar el mismo pedido: debe quedar todo `SALTEADO`.
+3. **Aplicar con tarifa**: `6RABA1` (LINKEADA). Probá un rango que obligue a 0, 1 y 2 cortes.
+4. **Allocation vacía** (ej. Novotel con código cargado) y **`TODAS`** (se excluyen `600HTL` y `ROOMS`).
+5. **Dos PCs** con la misma cola: nadie debe procesar el mismo pedido dos veces.
+
+Puntos del flujo que solo se pueden confirmar en Tourplan (si algo falla, el log dice en qué paso;
+mandame el HTML o el log):
+- Después de «OK» en Split Date, ¿el diálogo del período queda abierto? La app guarda si Save está
+  habilitado y si no sale con Exit.
+- Estructura de los radios del status (pestaña Rate Set) y botón Save/Exit de los diálogos.
+- Selectores del modal Product Find y del menú Rates.
 
 ## Pruebas
 

@@ -7,10 +7,10 @@ deja en OBSERVACIONES lo que se cerraría, sin escribir nada.
 
 Interfaz: barra superior (Nuevo pedido / Cola / usuario) y un flujo de 3 pasos
 (1 Hotel, 2 Fechas y alcance, 3 Revisar y enviar), según el esquema de pantallas.
-Donde el esquema choca con lo que todavía no está implementado (aplicar en
-Tourplan, toma de pedidos), se mantiene el comportamiento original: «Enviar y
-ejecutar» y «Ejecutar pendientes» quedan deshabilitados y la lectura se lanza
-desde el bloque «Leer plan en Tourplan» de la Cola.
+«Enviar a la cola» solo escribe el pedido; «Enviar y ejecutar» y «Ejecutar pendientes» lanzan
+runner.py, que usa el MODO de cada fila (lectura: deja el plan en OBSERVACIONES; aplicar: toma
+el pedido y cierra en Tourplan). Escribir en Producción exige autorización explícita en la
+Configuración.
 
 La configuración (credenciales de Tourplan, URL del Sheet, entorno) se guarda por
 PC en ~/.tourplan-allocation (ver common/user_config.py).
@@ -292,13 +292,18 @@ def dialogo_configuracion():
         with c2:
             tp_password = st.text_input("Password Tourplan", value=cfg["tp_password"], type="password")
         headless = st.checkbox("Correr Chrome sin ventana visible (headless)", value=bool(cfg["headless"]))
+        prod_ok = st.checkbox(
+            "Autorizo escribir en Producción (solo cuenta si el entorno elegido es Producción)",
+            value=bool(cfg["produccion_confirmada"]),
+            help="Sin esta casilla, el modo aplicar se niega a escribir en Producción. Dejala destildada mientras se prueba.")
         minutos = st.number_input("Minutos para considerar un pedido EN CURSO como abandonado",
                                   min_value=1, value=int(cfg["minutos_abandono"]))
         if st.form_submit_button("Guardar", type="primary", use_container_width=True):
             user_config.guardar({
                 "nombre": nombre, "sheet_url": sheet_url, "entorno": entorno,
                 "tp_usuario": tp_usuario, "tp_password": tp_password,
-                "headless": headless, "minutos_abandono": int(minutos)})
+                "headless": headless, "minutos_abandono": int(minutos),
+                "produccion_confirmada": bool(prod_ok)})
             st.rerun()
     ruta = Path(user_config.CREDENTIALS_PATH)
     if ruta.exists():
@@ -657,11 +662,16 @@ def render_revisar():
         c_vol.button("Volver", key="vol_2", use_container_width=True, on_click=_ir_paso, args=(2,))
         enviar = c_cola.button("Enviar a la cola", key="enviar_cola", use_container_width=True,
                                disabled=not (revisado and nombre))
-        st.button("Enviar y ejecutar", key="enviar_ejecutar", type="primary", use_container_width=True,
-                  disabled=True,
-                  help="Disponible en una etapa posterior (todavía no hay ejecución con Selenium).")
+        lista, motivo = _config_lista(cfg)
+        base_url = URLS_ENTORNO[cfg["entorno"]]
+        bloqueo_prod = modo == MODO_APLICAR and base_url == URL_PRODUCCION and not cfg["produccion_confirmada"]
+        if bloqueo_prod:
+            motivo = "Escribir en Producción requiere autorización explícita en la Configuración."
+        ejecutar = st.button("Enviar y ejecutar", key="enviar_ejecutar", type="primary", use_container_width=True,
+                             disabled=not (revisado and lista) or bloqueo_prod or _estado_ejecucion()["running"],
+                             help=motivo or "Escribe el pedido y lo ejecuta ahora en esta PC.")
 
-    if enviar:
+    if enviar or ejecutar:
         try:
             valores = cola.armar_pedido(
                 codigo_hotel=hotel.codigo, allocations=cods, todas=todas, fechas=sel,
@@ -675,9 +685,13 @@ def render_revisar():
         for k in ("hotel_clave", "hotel_sel"):
             st.session_state.pop(k, None)
         st.session_state["consulta"] = ""
-        st.session_state["aviso"] = f"Pedido {valores[cola.C_ID]} enviado a la cola (fila {fila})."
         st.session_state.pop("cola_datos", None)
-        _ir_paso(1)
+        if ejecutar:
+            st.session_state["_lanzar"] = valores[cola.C_ID]
+            _set_vista("cola")
+        else:
+            st.session_state["aviso"] = f"Pedido {valores[cola.C_ID]} enviado a la cola (fila {fila})."
+            _ir_paso(1)
         st.rerun()
 
 
@@ -764,23 +778,32 @@ def render_cola():
     _cargar_registro()
     c_tit, c_fil, c_ref, c_ej = st.columns([4, 3, 0.8, 1.7])
     c_tit.markdown('<div style="font-size:1.7rem;font-weight:600">Cola de pedidos</div>'
-                   '<div class="ayuda">Esta vista solo lee la pestaña COLA del Sheet.</div>', unsafe_allow_html=True)
+                   '<div class="ayuda">Esta vista lee la pestaña COLA del Sheet.</div>', unsafe_allow_html=True)
     with c_fil:
         st.segmented_control("Filtro", ["Todos", "Pendientes", "Con error"], default="Todos",
                              required=True, key="filtro_cola", label_visibility="collapsed")
     if c_ref.button("🔄", key="refrescar_cola", help="Leer la cola ahora"):
         _cola_datos(forzar=True)
-    c_ej.button("Ejecutar pendientes", type="primary", use_container_width=True, disabled=True,
-                key="ejecutar_pendientes",
-                help="Disponible en una etapa posterior (todavía no hay toma de pedidos con Selenium).")
+    cfg = user_config.cargar()
+    lista, motivo = _config_lista(cfg)
+    corriendo = _estado_ejecucion()["running"]
+    if c_ej.button("Ejecutar pendientes", type="primary", use_container_width=True, key="ejecutar_pendientes",
+                   disabled=corriendo or not lista,
+                   help=motivo or "Procesa los pedidos PENDIENTE según el MODO de cada fila."):
+        lanzar_runner()
+        st.rerun()
+    if st.session_state.get("_lanzar") and not corriendo:        # viene de «Enviar y ejecutar»
+        lanzar_runner(solo_pedido=st.session_state.pop("_lanzar"))
+        st.rerun()
+    if not lista:
+        st.caption(motivo)
     _tabla_cola()
     st.markdown('<div class="ayuda" style="margin-top:.6rem">Estados: PENDIENTE, EN CURSO, OK, SALTEADO o ERROR '
                 'con detalle. EN CURSO: lo está ejecutando una PC. &nbsp;&nbsp; El script no frena el lote por un '
                 f'error puntual y se puede retomar. La vista se actualiza sola cada {INTERVALO_COLA} segundos.</div>',
                 unsafe_allow_html=True)
     st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
-    with card("lectura"):
-        render_lectura_tourplan()
+    render_ejecucion()
 
 
 # ── Lectura del plan en Tourplan (proceso hijo, etapa 2) ─────────────────
@@ -794,67 +817,82 @@ def _leer_proceso(proc, state):
     state["finished"] = True
 
 
-def render_lectura_tourplan():
-    st.markdown("#### Leer plan en Tourplan (solo lectura)")
-    st.caption("Abre Tourplan, lee cada allocation de los pedidos PENDIENTE y deja el plan en "
-               "OBSERVACIONES_CIERRE_ALLOTMENT. No escribe nada en Tourplan ni cambia el estado del pedido.")
-    cfg = user_config.cargar()
-    state = st.session_state.setdefault("_lectura", {
+def _config_lista(cfg):
+    """(ok, motivo): lo mínimo para poder ejecutar."""
+    if not (cfg["tp_usuario"] and cfg["tp_password"] and cfg["sheet_url"]):
+        return False, "Completá usuario/password de Tourplan y URL del Sheet en la Configuración (arriba a la derecha)."
+    if not cfg["nombre"]:
+        return False, "Cargá tu nombre en la Configuración: queda en «Tomado por»."
+    return True, ""
+
+
+def _estado_ejecucion():
+    return st.session_state.setdefault("_ejecucion", {
         "running": False, "finished": False, "log_lines": [], "returncode": None,
         "proc": None, "stop_file": None, "abort_requested": False})
-    base_url = URLS_ENTORNO[cfg["entorno"]]
-    if cfg["entorno"] == "produccion":
-        st.warning("Entorno PRODUCCIÓN configurado. La lectura no escribe, pero ocupa una licencia real.")
-    faltan = not (cfg["tp_usuario"] and cfg["tp_password"] and cfg["sheet_url"])
-    if faltan:
-        st.caption("Completá usuario/password de Tourplan y URL del Sheet en la Configuración (arriba a la derecha).")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        correr = st.button("Leer plan (lectura)", use_container_width=True,
-                           disabled=state["running"] or faltan)
-    with c2:
-        abortar = st.button("⏹ Abortar", use_container_width=True,
-                            disabled=not state["running"] or state["abort_requested"])
-    if correr:
-        run_dir = Path(tempfile.mkdtemp(prefix="allocation_"))
-        (run_dir / "screenshots").mkdir()
-        stop_file = run_dir / "ABORTAR.flag"
-        env = os.environ.copy()
-        env.update({
-            "TOURPLAN_USERNAME": cfg["tp_usuario"], "TOURPLAN_PASSWORD": cfg["tp_password"],
-            "TOURPLAN_BASE_URL": base_url, "TOURPLAN_SHEET_URL": cfg["sheet_url"],
-            "TOURPLAN_CREDENTIALS_PATH": user_config.CREDENTIALS_PATH,
-            "TOURPLAN_TOKEN_PATH": user_config.TOKEN_PATH,
-            "TOURPLAN_HEADLESS": "1" if cfg["headless"] else "0",
-            "TOURPLAN_VELOCIDAD": "1.5" if base_url == URL_PRODUCCION else "1.0",
-            "TOURPLAN_SS_DIR": str(run_dir / "screenshots"), "TOURPLAN_STOP_FILE": str(stop_file),
-            "TOURPLAN_MODO": MODO_LECTURA, "PYTHONPATH": str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", ""),
-            "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"})
-        proc = subprocess.Popen(
-            [sys.executable, str(REPO_ROOT / "runner.py")], cwd=str(REPO_ROOT), env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-            errors="replace", bufsize=1)
-        state.update({"running": True, "finished": False, "log_lines": [], "returncode": None,
-                      "proc": proc, "stop_file": stop_file, "abort_requested": False})
-        threading.Thread(target=_leer_proceso, args=(proc, state), daemon=True).start()
-        st.rerun()
-    if abortar:
-        state["abort_requested"] = True
-        try:
-            state["stop_file"].touch()
-        except Exception:
-            pass
+
+def lanzar_runner(solo_pedido=None):
+    """Lanza runner.py como proceso hijo (igual que Drive-TP-NX-App). Usa el MODO de cada fila de
+    la cola; si se indica solo_pedido, procesa únicamente ese. Escribir en Producción solo si la
+    Configuración lo autoriza explícitamente."""
+    cfg = user_config.cargar()
+    state = _estado_ejecucion()
+    base_url = URLS_ENTORNO[cfg["entorno"]]
+    run_dir = Path(tempfile.mkdtemp(prefix="allocation_"))
+    (run_dir / "screenshots").mkdir()
+    stop_file = run_dir / "ABORTAR.flag"
+    env = os.environ.copy()
+    env.update({
+        "TOURPLAN_USERNAME": cfg["tp_usuario"], "TOURPLAN_PASSWORD": cfg["tp_password"],
+        "TOURPLAN_BASE_URL": base_url, "TOURPLAN_SHEET_URL": cfg["sheet_url"],
+        "TOURPLAN_CREDENTIALS_PATH": user_config.CREDENTIALS_PATH,
+        "TOURPLAN_TOKEN_PATH": user_config.TOKEN_PATH,
+        "TOURPLAN_HEADLESS": "1" if cfg["headless"] else "0",
+        "TOURPLAN_VELOCIDAD": "1.5" if base_url == URL_PRODUCCION else "1.0",
+        "TOURPLAN_SS_DIR": str(run_dir / "screenshots"), "TOURPLAN_STOP_FILE": str(stop_file),
+        "TOURPLAN_QUIEN": cfg["nombre"],
+        "TOURPLAN_PERMITIR_PRODUCCION": "1" if (base_url == URL_PRODUCCION and cfg["produccion_confirmada"]) else "0",
+        "TOURPLAN_SOLO_PEDIDO": solo_pedido or "",
+        "PYTHONPATH": str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", ""),
+        "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"})
+    env.pop("TOURPLAN_MODO", None)
+    proc = subprocess.Popen(
+        [sys.executable, str(REPO_ROOT / "runner.py")], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+        errors="replace", bufsize=1)
+    state.update({"running": True, "finished": False, "log_lines": [], "returncode": None,
+                  "proc": proc, "stop_file": stop_file, "abort_requested": False})
+    threading.Thread(target=_leer_proceso, args=(proc, state), daemon=True).start()
+
+
+def render_ejecucion():
+    """Avance de la ejecución: log del proceso, botón Abortar y resultado."""
+    state = _estado_ejecucion()
+    if not (state["running"] or state["log_lines"] or state["finished"]):
+        return
+    st.markdown("#### Ejecución")
+    if state["running"]:
+        st.caption("Corriendo en esta PC. Abortar corta al terminar el paso en curso, hace logout de Tourplan "
+                   "y deja lo que no se procesó en PENDIENTE para retomar.")
+        if st.button("⏹ Abortar", key="abortar", disabled=state["abort_requested"]):
+            state["abort_requested"] = True
+            try:
+                state["stop_file"].touch()
+            except Exception:
+                pass
+        if state["abort_requested"]:
+            st.warning("⏸️ Abortando: termina el paso en curso, hace logout y corta.")
     if state["log_lines"]:
         st.code("".join(state["log_lines"][-300:]), language=None)
     if state["running"] and state["finished"]:
         state["running"] = False
         rc = state["returncode"]
-        st.session_state.pop("cola_datos", None)  # fuerza releer la cola con las observaciones nuevas
+        st.session_state["cola_ts"] = 0  # releer la cola con lo que dejó el runner
         if rc == 0:
-            st.success("Terminó OK. La cola se actualiza sola: el plan queda en Observaciones.")
+            st.success("Terminó OK. La cola se actualizó: mirá los estados y las observaciones.")
         elif rc == ABORT_EXIT_CODE:
-            st.info("⏸️ Abortado.")
+            st.info("⏸️ Abortado. Lo que quedó sin procesar sigue PENDIENTE.")
         else:
             st.error(f"El proceso terminó con error (código {rc}). Revisá el log.")
     if state["running"]:

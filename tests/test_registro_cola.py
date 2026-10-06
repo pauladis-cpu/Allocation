@@ -171,3 +171,49 @@ def test_resolver_allocations():
     assert len(enc) == 2 and not falta
     enc, falta = registro.resolver_allocations("spwv; NO-EXISTE", ede)
     assert [a.codigo for a in enc] == ["SPWV"] and falta == ["NO-EXISTE"]
+
+
+def _ws_con_pedido(**estados):
+    ws = FakeWS(cola.COLUMNAS_COLA)
+    fila = {c: "" for c in cola.COLUMNAS_COLA}
+    fila.update({cola.C_ID: "P-1", cola.C_EST_ALLOT: "PENDIENTE", cola.C_EST_TARIFA: "PENDIENTE"})
+    fila.update(estados)
+    ws.filas.append([fila[c] for c in cola.COLUMNAS_COLA])
+    return ws
+
+
+def test_tomar_pedido_ok_y_queda_en_curso():
+    ws = _ws_con_pedido()
+    assert cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)
+    f = dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))
+    assert (f[cola.C_TOMADO_POR], f[cola.C_EST_ALLOT], f[cola.C_EST_TARIFA]) == ("Ana", "EN CURSO", "EN CURSO")
+    assert f[cola.C_TOMADO_EN]
+
+
+def test_no_toma_si_ya_lo_tiene_otro_o_no_esta_pendiente():
+    assert not cola.tomar_pedido(_ws_con_pedido(TOMADO_POR="Luis"), 2, "Ana", dormir=lambda s: None)
+    assert not cola.tomar_pedido(_ws_con_pedido(ESTADO_CIERRE_ALLOTMENT="OK"), 2, "Ana", dormir=lambda s: None)
+    # fase concreta: tarifa PENDIENTE y allotment OK -> se puede tomar solo la tarifa
+    ws = _ws_con_pedido(ESTADO_CIERRE_ALLOTMENT="OK")
+    assert cola.tomar_pedido(ws, 2, "Ana", fases=("tarifa",), dormir=lambda s: None)
+    assert dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))[cola.C_EST_ALLOT] == "OK"
+
+
+def test_dos_pcs_nadie_procesa_el_mismo_pedido_dos_veces():
+    ws = _ws_con_pedido()
+    resultados = {}
+
+    def otra_pc_pisa(segundos):               # durante la espera de Ana, Luis escribe encima
+        fila = ws.filas[1]
+        fila[cola.COLUMNAS_COLA.index(cola.C_TOMADO_POR)] = "Luis"
+    resultados["ana"] = cola.tomar_pedido(ws, 2, "Ana", dormir=otra_pc_pisa)
+    assert resultados["ana"] is False                                     # Ana suelta
+    assert dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))[cola.C_TOMADO_POR] == "Luis"   # la fila queda de Luis
+    assert not cola.tomar_pedido(ws, 2, "Pedro", dormir=lambda s: None)  # y nadie más la toma
+
+
+def test_escribir_fase():
+    ws = _ws_con_pedido()
+    cola.escribir_fase(ws, 2, "tarifa", "SALTEADO", "no cierra tarifa")
+    f = dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))
+    assert (f[cola.C_EST_TARIFA], f[cola.C_OBS_TARIFA], f[cola.C_EST_ALLOT]) == ("SALTEADO", "no cierra tarifa", "PENDIENTE")

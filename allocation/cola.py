@@ -10,6 +10,7 @@ se ubican por encabezado y nunca se modifican encabezados.
 """
 
 import secrets
+import time
 from datetime import datetime
 
 from allocation.constantes import (
@@ -211,3 +212,52 @@ def leer_cola(ws, minutos_abandono=30, ahora=None):
         })
     pedidos.reverse()
     return pedidos
+
+
+# ── Toma de pedidos (varias PCs a la vez) ──────────────────────────────────
+
+def _valores_fila(ws, row_idx, columnas):
+    vals = ws.row_values(row_idx)
+    vals += [""] * (len(columnas) - len(vals))
+    return dict(zip(columnas, vals))
+
+
+def tomar_pedido(ws, row_idx, quien, fases=("allotment", "tarifa"), espera=2.0, ahora=None, dormir=time.sleep):
+    """Intenta tomar el pedido de la fila row_idx. Google Sheets no tiene escritura atómica, por eso:
+      1) se relee la fila justo antes (debe seguir PENDIENTE y sin TOMADO_POR);
+      2) se escribe TOMADO_POR/TOMADO_EN y las fases a ejecutar pasan a EN CURSO;
+      3) se espera unos segundos y se RELEE: si TOMADO_POR sigue siendo uno mismo, es suyo;
+         si no, se suelta (sin tocar nada más: la fila es de quien ganó).
+    Devuelve True si el pedido quedó tomado."""
+    from common.sheets_client import actualizar_fila_sheet
+    columnas = ws.row_values(1)
+    verificar_columnas(columnas)
+    campos = {"allotment": C_EST_ALLOT, "tarifa": C_EST_TARIFA}
+    antes = _valores_fila(ws, row_idx, columnas)
+    if (antes.get(C_TOMADO_POR) or "").strip():
+        return False
+    if any(clasificar_estado(antes.get(campos[f])) != ESTADO_PENDIENTE for f in fases):
+        return False
+    ahora = ahora or datetime.now()
+    escribir = {C_TOMADO_POR: quien, C_TOMADO_EN: ahora.strftime(FORMATO_FECHA_HORA)}
+    escribir.update({campos[f]: ESTADO_EN_CURSO for f in fases})
+    actualizar_fila_sheet(ws, row_idx, columnas, escribir)
+    dormir(espera)
+    despues = _valores_fila(ws, row_idx, columnas)
+    return ((despues.get(C_TOMADO_POR) or "").strip() == quien
+            and all(clasificar_estado(despues.get(campos[f])) == ESTADO_EN_CURSO for f in fases))
+
+
+def escribir_fase(ws, row_idx, fase, estado, observaciones=None):
+    """Escribe el estado (y opcionalmente las observaciones) de UNA fase de UNA fila."""
+    from common.sheets_client import actualizar_fila_sheet
+    columnas = ws.row_values(1)
+    est, obs = (C_EST_ALLOT, C_OBS_ALLOT) if fase == "allotment" else (C_EST_TARIFA, C_OBS_TARIFA)
+    valores = {est: estado}
+    if observaciones is not None:
+        valores[obs] = observaciones
+    actualizar_fila_sheet(ws, row_idx, columnas, valores)
+
+
+def formato_error(detalle):
+    return f"{ESTADO_ERROR}: {detalle}"
