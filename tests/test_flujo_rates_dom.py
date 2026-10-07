@@ -405,3 +405,19 @@ def test_grilla_sin_actualizar_no_repite_la_edicion(monkeypatch):
     with pytest.raises(FlujoError, match="no la refleja"):
         rt.procesar_habitacion(None, "H", "IGRHT1H", [(date(2026, 11, 10), date(2026, 11, 14))], aplicar=True)
     assert len(editadas) == 1                    # la edición se hizo una sola vez
+
+
+def test_product_find_espera_si_la_pagina_viene_vacia_al_principio(monkeypatch):
+    fila = {"loc": "IGR", "srv": "HT", "sup": "1INT01", "opt": "MEFV", "desc": "x"}
+    paginas = [[], [], [fila]]                                  # la grilla tarda en cargar
+    monkeypatch.setattr(rt, "_leer_pagina_modal", lambda d: paginas.pop(0) if len(paginas) > 1 else paginas[0])
+    monkeypatch.setattr(rt.tp, "esperar_fin_carga", lambda *a, **k: None)
+    monkeypatch.setattr(rt.time, "sleep", lambda s: None)
+
+    class Drv:
+        def find_elements(self, *a):
+            return []
+
+        def execute_script(self, js, *a):
+            return 1                                            # clic exacto resuelto
+    assert rt.recorrer_product_find(Drv(), objetivo="IGRHT1INT01MEFV") is True

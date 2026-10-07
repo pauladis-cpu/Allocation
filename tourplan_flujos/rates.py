@@ -65,13 +65,18 @@ def recorrer_product_find(driver, objetivo=None, max_paginas=60):
     devuelve True. Sin objetivo: devuelve el dict {codigo_largo: fila} de todas las opciones."""
     vistas = {}
     for _ in range(max_paginas):
-        filas = _leer_pagina_modal(driver)
-        nuevas = 0
-        for f in filas:
-            c = codigo_largo(f["loc"], f["srv"], f["sup"], f["opt"])
-            if c not in vistas:
-                vistas[c] = f
-                nuevas += 1
+        for reintento in range(4):      # la página puede estar todavía cargando: sin filas nuevas se espera y se relee
+            filas = _leer_pagina_modal(driver)
+            nuevas = 0
+            for f in filas:
+                c = codigo_largo(f["loc"], f["srv"], f["sup"], f["opt"])
+                if c not in vistas:
+                    vistas[c] = f
+                    nuevas += 1
+            if nuevas or reintento == 3 or (objetivo is not None and objetivo.upper() in vistas):
+                break
+            time.sleep(1.5 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
         if objetivo is not None and objetivo.upper() in vistas:
             clic = driver.execute_script("""
                 var obj = arguments[0];
@@ -97,7 +102,8 @@ def recorrer_product_find(driver, objetivo=None, max_paginas=60):
         tp.jc(driver, siguiente[0])
         time.sleep(1.0 * tp.VELOCIDAD)
     if objetivo is not None:
-        raise FlujoError(f"No encontré la habitación {objetivo} en el Product Find del hotel.")
+        raise FlujoError(f"No encontré la habitación {objetivo} en el Product Find del hotel "
+                         f"(leí {len(vistas)} opción(es): {', '.join(list(vistas)[:12])}).")
     return vistas
 
 
