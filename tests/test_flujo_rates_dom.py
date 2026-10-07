@@ -392,3 +392,16 @@ def test_grilla_sin_actualizar_no_repite_el_corte(monkeypatch):
     with pytest.raises(FlujoError, match="no lo refleja"):
         rt.procesar_habitacion(None, "H", "IGRHT1H", [(date(2026, 11, 10), date(2026, 11, 14))], aplicar=True)
     assert len(cortes) == 1                      # el corte se hizo una sola vez
+
+
+def test_grilla_sin_actualizar_no_repite_la_edicion(monkeypatch):
+    p = rp.Periodo(date(2026, 11, 10), date(2026, 11, 14), "TR", "Confirmed", "Standard")
+    monkeypatch.setattr(rt, "abrir_habitacion", lambda *a, **k: None)
+    monkeypatch.setattr(rt, "leer_periodos_completo", lambda d, r, minimo=0: [p])      # la grilla nunca cambia
+    editadas = []
+    monkeypatch.setattr(rt, "editar_periodo", lambda d, h, e: editadas.append(e))
+    monkeypatch.setattr(rt.tp, "esperar_fin_carga", lambda *a, **k: None)
+    monkeypatch.setattr(rt.time, "sleep", lambda s: None)
+    with pytest.raises(FlujoError, match="no la refleja"):
+        rt.procesar_habitacion(None, "H", "IGRHT1H", [(date(2026, 11, 10), date(2026, 11, 14))], aplicar=True)
+    assert len(editadas) == 1                    # la edición se hizo una sola vez

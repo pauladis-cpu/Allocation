@@ -593,7 +593,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
     abrir_habitacion(driver, codigo_hotel, cod_hab)
     hechas = cortes = 0
     vistas = 0
-    ultimo_corte = None          # (ini, fin, fechas) del último corte guardado, para detectar una grilla sin actualizar
+    ultimo_cambio = None         # último corte o edición guardado, para detectar una grilla que todavía no se actualizó
     sin_actualizar = relecturas = 0
     for _ in range(max_iteraciones):
         periodos = leer_periodos_completo(driver, rangos, minimo=vistas)
@@ -606,7 +606,8 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
         if plan.cortes:
             c = plan.cortes[0]
             del_periodo = sorted(x.fecha for x in plan.cortes if (x.ini, x.fin) == (c.ini, c.fin))
-            if ultimo_corte == (c.ini, c.fin, del_periodo):
+            clave = ("corte", c.ini, c.fin, tuple(del_periodo))
+            if ultimo_cambio == clave:
                 # Se acaba de guardar este mismo corte y la grilla todavía muestra el período entero: está sin actualizar.
                 sin_actualizar += 1
                 if sin_actualizar > 4:
@@ -632,7 +633,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
                 time.sleep(2.0 * tp.VELOCIDAD)
                 tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
                 continue
-            ultimo_corte = (c.ini, c.fin, del_periodo)
+            ultimo_cambio = clave
             sin_actualizar = 0
             cortes += len(del_periodo)
             continue
@@ -641,6 +642,17 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
         if not plan.ediciones:
             break
         e = plan.ediciones[0]
+        clave = ("edicion", e.periodo.ini, e.periodo.fin, e.periodo.pc)
+        if ultimo_cambio == clave:
+            # Se acaba de guardar esta misma edición y la grilla la muestra sin cambios: todavía no se actualizó.
+            sin_actualizar += 1
+            if sin_actualizar > 4:
+                raise FlujoError(f"La edición de {e.periodo.ini:%d/%m/%Y}-{e.periodo.fin:%d/%m/%Y} {e.periodo.pc} se guardó "
+                                 f"pero la grilla no la refleja: se frena para no repetirla.")
+            print("    ↳ la grilla todavía no refleja el cambio guardado: se espera y se relee", flush=True)
+            time.sleep(3.0 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+            continue
         print(f"    → editando {e.periodo.ini:%d/%m/%Y}-{e.periodo.fin:%d/%m/%Y} {e.periodo.pc}: "
               f"{e.periodo.status} → {e.nuevo_status}", flush=True)
         try:
@@ -653,6 +665,8 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
             time.sleep(2.0 * tp.VELOCIDAD)
             tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
             continue
+        ultimo_cambio = clave
+        sin_actualizar = 0
         hechas += 1
     else:
         raise FlujoError("Demasiadas iteraciones cortando/editando: se frena.")
