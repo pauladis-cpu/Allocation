@@ -261,3 +261,32 @@ def test_esperar_fin_carga_ignora_el_modal_y_espera_un_please_wait_real(drv, cap
     t = time.time()
     tp.esperar_fin_carga(drv, timeout=3, velocidad=0.2)
     assert time.time() - t < 1
+
+
+def test_abrir_supplier_reintenta_si_un_dialog_tapa_el_campo(monkeypatch):
+    from selenium.common.exceptions import ElementClickInterceptedException
+
+    class Campo:
+        clics = 0
+
+        def click(self):
+            Campo.clics += 1
+            if Campo.clics < 3:
+                raise ElementClickInterceptedException("tapado por <dialog open>")
+
+    class Parado(Exception):
+        pass
+
+    class Drv:
+        def get(self, url):
+            pass
+
+    def parar(*a, **k):
+        raise Parado()
+    monkeypatch.setattr(fl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fl.tp, "esperar_fin_carga", lambda *a, **k: None)
+    monkeypatch.setattr(fl.tp, "wait", lambda d, sel: Campo())
+    monkeypatch.setattr(fl.tp, "set_val", parar)           # llegó hasta escribir: el clic se resolvió
+    with pytest.raises(Parado):
+        fl.abrir_supplier(Drv(), "1INT01")
+    assert Campo.clics == 3

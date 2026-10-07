@@ -14,6 +14,7 @@ import re
 import time
 from datetime import date, datetime, timedelta
 
+from selenium.common.exceptions import ElementClickInterceptedException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -68,7 +69,17 @@ def abrir_supplier(driver, codigo_hotel):
     tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
 
     inp = tp.wait(driver, "#searchSupplier input")
-    inp.click()
+    for intento in range(4):            # el «PLEASE WAIT» puede tapar el campo: se espera y se reintenta
+        try:
+            inp.click()
+            break
+        except ElementClickInterceptedException:
+            if intento == 3:
+                raise
+            print("    ↳ el campo del supplier está tapado por un dialog de carga: se espera y se reintenta", flush=True)
+            time.sleep(2 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+            inp = tp.wait(driver, "#searchSupplier input")
     tp.set_val(driver, inp, codigo)
 
     def filas_coinciden():
