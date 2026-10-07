@@ -301,11 +301,15 @@ HTML_SPLIT = r"""
         const f = new Date(2000 + +m[3], +m[2]-1, +m[1]); hid.value = fmt(f); add.disabled = !(f > new Date(2026,11,1) && f <= new Date(2026,11,25)); });
       const chk = s.querySelector('#split-applicable');
       if (chk) chk.addEventListener('change', () => window.log.push('casilla:' + chk.checked));
-      add.addEventListener('click', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/), f = new Date(2000 + +m[3], +m[2]-1, +m[1]), a = new Date(f); a.setDate(a.getDate() - 1);
-        s.querySelector('ul.dateranges').innerHTML = '<li><span class="date-range-display">Tue 01/Dec/2026 - Tue ' + fmt(a) + '</span></li><li><span class="date-range-display">Wed ' + fmt(f) + ' - Fri 25/Dec/2026</span></li>'; });
-      s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + inp.value + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove();
+      const cuts = [], txt = [];
+      add.addEventListener('click', () => { const m = inp.value.match(/^(\d+)\/(\d+)\/(\d+)$/), f = new Date(2000 + +m[3], +m[2]-1, +m[1]);
+        cuts.push(f); txt.push(inp.value); cuts.sort((a, b) => a - b);
+        const ini = [new Date(2026,11,1)].concat(cuts), fin = cuts.map(c => { const a = new Date(c); a.setDate(a.getDate() - 1); return a; }).concat([new Date(2026,11,25)]);
+        s.querySelector('ul.dateranges').innerHTML = ini.map((a, i) => '<li><span class="date-range-display">Tue ' + fmt(a) + ' - Fri ' + fmt(fin[i]) + '</span></li>').join('');
+        inp.value = ''; add.disabled = true; });
+      s.querySelector('tp-button.ok button').addEventListener('click', () => { window.log.push('ok:' + txt.join('+') + ':todos=' + (chk ? chk.checked : 'sin-casilla')); s.remove();
         const sv = d.querySelector('tp-button.save button');
-        setTimeout(() => { sv.disabled = false; }, 1500);
+        setTimeout(() => { sv.disabled = false; }, 150);
         sv.addEventListener('click', () => { window.log.push('guardado'); d.remove(); }); });
     });
   });
@@ -359,3 +363,19 @@ def test_lectura_completa_reintenta_si_la_grilla_trae_menos_filas(monkeypatch):
     monkeypatch.setattr(rt.tp, "esperar_fin_carga", lambda *a, **k: None)
     monkeypatch.setattr(rt.time, "sleep", lambda s: None)
     assert rt.leer_periodos_completo(None, [], minimo=3) == [1, 2, 3]
+
+
+def test_cortes_encadenados_en_una_sola_apertura():
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        pg = b.new_page()
+        pg.set_content(HTML_SPLIT)
+        pg.evaluate("window.CASILLA = false")
+        d = Driver(pg)
+        per = rt.leer_periodos(d)[0]
+        rt.hacer_corte(d, HAB, per, [date(2026, 12, 20), date(2026, 12, 10)])
+        log = pg.evaluate("window.log")
+        assert log == ["ok:10/12/26+20/12/26:todos=sin-casilla", "guardado"]
+        with pytest.raises(rt.FlujoError, match="fuera del período"):
+            rt.hacer_corte(d, HAB, per, [date(2026, 12, 10), date(2027, 1, 5)])
+        b.close()

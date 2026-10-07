@@ -7,17 +7,10 @@
 - [ ] Dos PCs con la misma cola (toma de pedidos).
 - [ ] Filtro «Date To» del diálogo de la allocation (se amplía antes de leer los días).
 
-## Rates: encadenar los cortes (splits) en una sola apertura del período
-- [ ] Hoy se hace **un corte por diálogo** (spec 6.5, paso 6): si un período necesita varios cortes
-  (ej. 15/10 y 16/10), la app abre el mismo período una vez por cada corte, relee la grilla y repite.
-  Tourplan permite agregar **varios splits juntos** en el mismo diálogo Split Date. Cambiar el flujo para:
-  abrir el período una sola vez, agregar todos los cortes de ese período (varias veces "Add Split" con
-  sus fechas), verificar que `ul.dateranges` quede con los N+1 rangos esperados, y recién ahí «OK».
-  - Lógica: `allocation/rates_plan.py` ya calcula todos los cortes de un período (`Plan.cortes`, agrupables por
-    `(ini, fin)`); falta agruparlos y pasarle la lista a `tourplan_flujos/rates.py:hacer_corte`.
-  - Validar en Test cómo se comporta la lista de rangos con varios cortes y qué pasa con el diálogo del
-    período después de «OK».
-  - Esto cambia la regla «un solo corte por diálogo» de la especificación: confirmar antes de implementarlo.
+## Rates: cortes encadenados (hecho, falta validar en Test)
+- [x] Los cortes de un mismo período se hacen en una sola apertura: se agrega cada fecha con «Add Split»
+  (se verifica la lista `ul.dateranges` tras cada una) y recién después «OK» + Save.
+- [ ] Validar en Test con un período que necesite 2 o más cortes.
 
 ## A confirmar en la próxima corrida en Test
 - [ ] Que ya no aparezca el aviso repetido de «dialog de carga seguía abierto». Si aparece, el log ahora

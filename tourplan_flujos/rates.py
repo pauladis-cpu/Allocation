@@ -341,10 +341,15 @@ def verificar_titulo_periodo(driver, cod_largo, periodo):
 # ── 6.5: un corte (split) ───────────────────────────────────────────────────
 
 def hacer_corte(driver, cod_largo, periodo, fecha_corte):
-    """Abre el período, abre Split Date y corta en fecha_corte. Un solo corte por diálogo.
+    """Abre el período, abre Split Date y corta en fecha_corte (una fecha o una lista de fechas: los
+    cortes se encadenan en una sola apertura del período; todas deben caer dentro de él).
     Si aparece la casilla 'Split All Applicable Price Codes' (solo cuando más de un price code comparte
     exactamente el período) la deja tildada (se clickea su label, el input suele ser invisible): corta todos esos price codes (FX incluido: su período puede
     cortarse, lo único que nunca se hace con FX es editarlo). Si no aparece, corta sin ella."""
+    fechas = sorted(set(fecha_corte if isinstance(fecha_corte, (list, tuple, set)) else [fecha_corte]))
+    fuera = [f for f in fechas if not (periodo.ini < f <= periodo.fin)]
+    if fuera or not fechas:
+        raise FlujoError(f"Fecha(s) de corte fuera del período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y}: {fuera}")
     _clic_fila(driver, periodo)
     try:
         verificar_titulo_periodo(driver, cod_largo, periodo)
@@ -383,31 +388,37 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte):
         inp = driver.execute_script(_JS_DLG + "return dlg.querySelector('input.tpdate-productdatesplitpoint');")
         if inp is None:
             raise FlujoError("No encontré el campo de fecha de corte.")
-        tp.set_val_con_blur(driver, inp, f"{fecha_corte.day:02d}/{fecha_corte.month:02d}/{fecha_corte.year % 100:02d}")
-        time.sleep(0.8 * tp.VELOCIDAD)
-        oculto = driver.execute_script("""
-            var el = arguments[0];
-            for (var i = 0; i < 4 && el; i++, el = el.parentElement) { var h = el.querySelector('input.tphidden'); if (h) return h.value; }
-            return null;""", inp)
-        if _fecha_tp(oculto) != fecha_corte:
-            raise FlujoError(f"Tourplan entendió la fecha de corte como {oculto!r}, se esperaba {fecha_corte:%d/%m/%Y}.")
-        habil = _esperar(driver, lambda: driver.execute_script(
-            _JS_DLG + "var b = dlg.querySelector('button.tpbutton-addsplit'); return !!(b && !b.disabled);"), timeout=8)
-        if not habil:
-            raise FlujoError("El botón Add Split no se habilitó: la fecha de corte no es válida.")
-        driver.execute_script(_JS_DLG + "dlg.querySelector('button.tpbutton-addsplit').click();")
-        time.sleep(0.8 * tp.VELOCIDAD)
-        rangos = driver.execute_script(_JS_DLG + """
-            return Array.from(dlg.querySelectorAll('ul.dateranges span.date-range-display')).map(function(s){ return s.textContent.trim(); });""")
-        parseados = []
-        for r in rangos:
-            mm = re.search(r"(\d{1,2}/\w+/\d{4})\s*[-–]\s*\w+\s+(\d{1,2}/\w+/\d{4})", r)
-            if not mm:
-                raise FlujoError(f"No entiendo el rango resultante del split: {r!r}")
-            parseados.append((_fecha_tp(mm.group(1)), _fecha_tp(mm.group(2))))
-        esperado = [(periodo.ini, fecha_corte - timedelta(days=1)), (fecha_corte, periodo.fin)]
-        if parseados != esperado:
-            raise FlujoError(f"El split dejó {parseados}, se esperaba {esperado}.")
+        hechos = []
+        for fecha_corte in fechas:         # varios cortes encadenados en una sola apertura del período
+            tp.set_val_con_blur(driver, inp, f"{fecha_corte.day:02d}/{fecha_corte.month:02d}/{fecha_corte.year % 100:02d}")
+            time.sleep(0.8 * tp.VELOCIDAD)
+            oculto = driver.execute_script("""
+                var el = arguments[0];
+                for (var i = 0; i < 4 && el; i++, el = el.parentElement) { var h = el.querySelector('input.tphidden'); if (h) return h.value; }
+                return null;""", inp)
+            if _fecha_tp(oculto) != fecha_corte:
+                raise FlujoError(f"Tourplan entendió la fecha de corte como {oculto!r}, se esperaba {fecha_corte:%d/%m/%Y}.")
+            habil = _esperar(driver, lambda: driver.execute_script(
+                _JS_DLG + "var b = dlg.querySelector('button.tpbutton-addsplit'); return !!(b && !b.disabled);"), timeout=8)
+            if not habil:
+                raise FlujoError("El botón Add Split no se habilitó: la fecha de corte no es válida.")
+            driver.execute_script(_JS_DLG + "dlg.querySelector('button.tpbutton-addsplit').click();")
+            time.sleep(0.8 * tp.VELOCIDAD)
+            hechos.append(fecha_corte)
+            rangos = driver.execute_script(_JS_DLG + """
+                return Array.from(dlg.querySelectorAll('ul.dateranges span.date-range-display')).map(function(s){ return s.textContent.trim(); });""")
+            parseados = []
+            for r in rangos:
+                mm = re.search(r"(\d{1,2}/\w+/\d{4})\s*[-–]\s*\w+\s+(\d{1,2}/\w+/\d{4})", r)
+                if not mm:
+                    raise FlujoError(f"No entiendo el rango resultante del split: {r!r}")
+                parseados.append((_fecha_tp(mm.group(1)), _fecha_tp(mm.group(2))))
+            puntos = sorted(hechos)
+            inicios = [periodo.ini] + puntos
+            finales = [f - timedelta(days=1) for f in puntos] + [periodo.fin]
+            esperado = list(zip(inicios, finales))
+            if parseados != esperado:
+                raise FlujoError(f"El split dejó {parseados}, se esperaba {esperado}.")
         driver.execute_script(_JS_DLG + "dlg.querySelector('tp-button.ok button').click();")   # un solo corte por diálogo
         time.sleep(1.2 * tp.VELOCIDAD)
         tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
@@ -593,13 +604,15 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
             return plan, rp.resumen(cod_hab, plan, lectura=True), len(plan.cortes)
         if plan.cortes:
             c = plan.cortes[0]
+            del_periodo = sorted(x.fecha for x in plan.cortes if (x.ini, x.fin) == (c.ini, c.fin))
             candidato = next((p for p in periodos if (p.ini, p.fin) == (c.ini, c.fin)
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
-            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en {c.fecha:%d/%m/%Y}", flush=True)
-            hacer_corte(driver, cod_hab, candidato, c.fecha)
-            cortes += 1
+            print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en "
+                  f"{', '.join(f'{f:%d/%m/%Y}' for f in del_periodo)}", flush=True)
+            hacer_corte(driver, cod_hab, candidato, del_periodo)
+            cortes += len(del_periodo)
             continue
         if not aplicar:
             return plan, rp.resumen(cod_hab, plan, lectura=True), len(plan.ediciones)
