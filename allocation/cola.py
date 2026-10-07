@@ -224,7 +224,8 @@ def _valores_fila(ws, row_idx, columnas):
 
 def tomar_pedido(ws, row_idx, quien, fases=("allotment", "tarifa"), espera=2.0, ahora=None, dormir=time.sleep):
     """Intenta tomar el pedido de la fila row_idx. Google Sheets no tiene escritura atómica, por eso:
-      1) se relee la fila justo antes (debe seguir PENDIENTE y sin TOMADO_POR);
+      1) se relee la fila justo antes (las fases deben seguir PENDIENTE y nadie debe tenerlo EN CURSO; un TOMADO_POR viejo de una
+         corrida ya terminada o abortada no bloquea);
       2) se escribe TOMADO_POR/TOMADO_EN y las fases a ejecutar pasan a EN CURSO;
       3) se espera unos segundos y se RELEE: si TOMADO_POR sigue siendo uno mismo, es suyo;
          si no, se suelta (sin tocar nada más: la fila es de quien ganó).
@@ -234,8 +235,8 @@ def tomar_pedido(ws, row_idx, quien, fases=("allotment", "tarifa"), espera=2.0, 
     verificar_columnas(columnas)
     campos = {"allotment": C_EST_ALLOT, "tarifa": C_EST_TARIFA}
     antes = _valores_fila(ws, row_idx, columnas)
-    if (antes.get(C_TOMADO_POR) or "").strip():
-        return False
+    if (antes.get(C_TOMADO_POR) or "").strip() and _en_curso(antes):
+        return False        # alguien lo está ejecutando; un TOMADO_POR sin fase EN CURSO es resto de una corrida anterior
     if any(clasificar_estado(antes.get(campos[f])) != ESTADO_PENDIENTE for f in fases):
         return False
     ahora = ahora or datetime.now()

@@ -191,7 +191,9 @@ def test_tomar_pedido_ok_y_queda_en_curso():
 
 
 def test_no_toma_si_ya_lo_tiene_otro_o_no_esta_pendiente():
-    assert not cola.tomar_pedido(_ws_con_pedido(TOMADO_POR="Luis"), 2, "Ana", dormir=lambda s: None)
+    # lo está ejecutando Luis (fase EN CURSO): no se toma
+    assert not cola.tomar_pedido(_ws_con_pedido(TOMADO_POR="Luis", ESTADO_CIERRE_ALLOTMENT="EN CURSO",
+                                                ESTADO_CIERRE_TARIFA="EN CURSO"), 2, "Ana", dormir=lambda s: None)
     assert not cola.tomar_pedido(_ws_con_pedido(ESTADO_CIERRE_ALLOTMENT="OK"), 2, "Ana", dormir=lambda s: None)
     # fase concreta: tarifa PENDIENTE y allotment OK -> se puede tomar solo la tarifa
     ws = _ws_con_pedido(ESTADO_CIERRE_ALLOTMENT="OK")
@@ -217,3 +219,10 @@ def test_escribir_fase():
     cola.escribir_fase(ws, 2, "tarifa", "SALTEADO", "no cierra tarifa")
     f = dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))
     assert (f[cola.C_EST_TARIFA], f[cola.C_OBS_TARIFA], f[cola.C_EST_ALLOT]) == ("SALTEADO", "no cierra tarifa", "PENDIENTE")
+
+
+def test_toma_de_nuevo_un_pedido_reseteado_a_pendiente_aunque_quede_un_tomado_por_viejo():
+    ws = _ws_con_pedido(TOMADO_POR="Ana", TOMADO_EN="2026-10-07 12:00:00", ESTADO_CIERRE_ALLOTMENT="OK")
+    assert cola.tomar_pedido(ws, 2, "Ana", fases=("tarifa",), dormir=lambda s: None)       # reintento propio
+    ws = _ws_con_pedido(TOMADO_POR="Luis", TOMADO_EN="2026-10-07 12:00:00")
+    assert cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)                          # resto de otra PC ya terminada
