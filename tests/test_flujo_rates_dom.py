@@ -183,7 +183,7 @@ def test_clic_en_una_fila_fuera_de_pantalla_hace_scroll_y_la_encuentra(drv_virtu
         rt._clic_fila(drv_virtual, lejana)
     assert drv_virtual.execute_script("return window.abierto;").startswith("25/Nov/2026")
     inexistente = rp.Periodo(date(2027, 1, 1), date(2027, 1, 1), "TR", "Confirmed", "Standard")
-    with pytest.raises(FlujoError, match="0 filas"):
+    with pytest.raises(rt.FilaNoEncontrada, match="0 filas"):
         rt._clic_fila(drv_virtual, inexistente)
 
 
@@ -379,3 +379,16 @@ def test_cortes_encadenados_en_una_sola_apertura():
         with pytest.raises(rt.FlujoError, match="fuera del período"):
             rt.hacer_corte(d, HAB, per, [date(2026, 12, 10), date(2027, 1, 5)])
         b.close()
+
+
+def test_grilla_sin_actualizar_no_repite_el_corte(monkeypatch):
+    larga = rp.Periodo(date(2026, 4, 1), date(2028, 12, 31), "TR", "Confirmed", "Standard")
+    monkeypatch.setattr(rt, "abrir_habitacion", lambda *a, **k: None)
+    monkeypatch.setattr(rt, "leer_periodos_completo", lambda d, r, minimo=0: [larga])   # la grilla nunca cambia
+    cortes = []
+    monkeypatch.setattr(rt, "hacer_corte", lambda d, h, per, fechas: cortes.append(fechas))
+    monkeypatch.setattr(rt.tp, "esperar_fin_carga", lambda *a, **k: None)
+    monkeypatch.setattr(rt.time, "sleep", lambda s: None)
+    with pytest.raises(FlujoError, match="no lo refleja"):
+        rt.procesar_habitacion(None, "H", "IGRHT1H", [(date(2026, 11, 10), date(2026, 11, 14))], aplicar=True)
+    assert len(cortes) == 1                      # el corte se hizo una sola vez

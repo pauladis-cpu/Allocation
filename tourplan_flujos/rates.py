@@ -291,30 +291,29 @@ def _intentar_clic(driver, periodo):
         periodo.pc.upper(), " ".join((periodo.rate_name or "").split()).lower())
 
 
+class FilaNoEncontrada(FlujoError):
+    """La fila no está en la grilla actual (por ejemplo porque se recargó tras un guardado): conviene releer."""
+
+
 def _clic_fila(driver, periodo):
     """Abre el período (rango, price code). Si la fila no está renderizada, recorre el scroll de la
     grilla hasta encontrarla (se reubica por texto en cada posición, nunca por índice). Debe haber
     EXACTAMENTE una; nunca se hace clic por posición."""
     n = _intentar_clic(driver, periodo)
-    for intento in range(3):        # la grilla puede estar recargándose: se reintenta antes de rendirse
-        if n != 0:
-            break
+    if n == 0:
         for pos in _posiciones(driver):
             _scroll_a(driver, pos)
             n = _intentar_clic(driver, periodo)
             if n != 0:
                 break
-        if n == 0 and intento < 2:
-            time.sleep(2.0 * tp.VELOCIDAD)
-            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
-            n = _intentar_clic(driver, periodo)
     if n != 1:
         try:
             visibles = [f"{f['rango']} {f['pc']} {f['status']}" for f in driver.execute_script(_JS_GRILLA) or []][:10]
         except Exception:
             visibles = []
-        raise FlujoError(f"Período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y} ({periodo.pc}): {n} filas coinciden. "
-                         f"Filas a la vista: {visibles}")
+        clase = FilaNoEncontrada if n == 0 else FlujoError
+        raise clase(f"Período {periodo.ini:%d/%m/%Y}-{periodo.fin:%d/%m/%Y} ({periodo.pc}): {n} filas coinciden. "
+                    f"Filas a la vista: {visibles}")
     if not _esperar(driver, lambda: driver.find_elements(By.CSS_SELECTOR, SEL_DIALOGO), timeout=15):
         raise FlujoError("No se abrió el diálogo del período.")
     time.sleep(1.0 * tp.VELOCIDAD)
@@ -594,6 +593,8 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
     abrir_habitacion(driver, codigo_hotel, cod_hab)
     hechas = cortes = 0
     vistas = 0
+    ultimo_corte = None          # (ini, fin, fechas) del último corte guardado, para detectar una grilla sin actualizar
+    sin_actualizar = relecturas = 0
     for _ in range(max_iteraciones):
         periodos = leer_periodos_completo(driver, rangos, minimo=vistas)
         vistas = max(vistas, len(periodos))
@@ -605,13 +606,34 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
         if plan.cortes:
             c = plan.cortes[0]
             del_periodo = sorted(x.fecha for x in plan.cortes if (x.ini, x.fin) == (c.ini, c.fin))
+            if ultimo_corte == (c.ini, c.fin, del_periodo):
+                # Se acaba de guardar este mismo corte y la grilla todavía muestra el período entero: está sin actualizar.
+                sin_actualizar += 1
+                if sin_actualizar > 4:
+                    raise FlujoError(f"El corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} se guardó pero la grilla "
+                                     f"no lo refleja: se frena para no repetirlo.")
+                print("    ↳ la grilla todavía no refleja el corte guardado: se espera y se relee", flush=True)
+                time.sleep(3.0 * tp.VELOCIDAD)
+                tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+                continue
             candidato = next((p for p in periodos if (p.ini, p.fin) == (c.ini, c.fin)
                               and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
             print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en "
                   f"{', '.join(f'{f:%d/%m/%Y}' for f in del_periodo)}", flush=True)
-            hacer_corte(driver, cod_hab, candidato, del_periodo)
+            try:
+                hacer_corte(driver, cod_hab, candidato, del_periodo)
+            except FilaNoEncontrada:
+                relecturas += 1
+                if relecturas > 3:
+                    raise
+                print("    ↳ la fila ya no está en la grilla (se recargó): se relee", flush=True)
+                time.sleep(2.0 * tp.VELOCIDAD)
+                tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+                continue
+            ultimo_corte = (c.ini, c.fin, del_periodo)
+            sin_actualizar = 0
             cortes += len(del_periodo)
             continue
         if not aplicar:
@@ -621,7 +643,16 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
         e = plan.ediciones[0]
         print(f"    → editando {e.periodo.ini:%d/%m/%Y}-{e.periodo.fin:%d/%m/%Y} {e.periodo.pc}: "
               f"{e.periodo.status} → {e.nuevo_status}", flush=True)
-        editar_periodo(driver, cod_hab, e)      # uno por vez: se relee la grilla después de cada guardado
+        try:
+            editar_periodo(driver, cod_hab, e)  # uno por vez: se relee la grilla después de cada guardado
+        except FilaNoEncontrada:
+            relecturas += 1
+            if relecturas > 3:
+                raise
+            print("    ↳ la fila ya no está en la grilla (se recargó): se relee", flush=True)
+            time.sleep(2.0 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+            continue
         hechas += 1
     else:
         raise FlujoError("Demasiadas iteraciones cortando/editando: se frena.")
