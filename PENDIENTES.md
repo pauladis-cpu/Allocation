@@ -11,11 +11,10 @@
 - [x] Filtro «Date To» del diálogo de la allocation.
 - [x] Estado «NO APLICA» cuando ninguna allocation cierra tarifa.
 
-## Validar en Test: rate sets (código hecho, probado solo con un DOM simulado)
-- [ ] Período con 2 rate sets (p. ej. «Confirmed, Confirmed»): se cambian los dos y se guarda una vez.
-- [ ] Período con 3 o más rate sets y con rate sets en distinto status («Confirmed, Manual»).
-- [ ] Que el selector (`#rate-set`) cambie de nombre al avanzar (si no, el log avisa «el selector de rate sets no cambió de nombre»).
-- [ ] Que la tarifa quede en 0 en cada rate set (revisar a mano uno ya procesado).
+## Validado en Test: rate sets
+- [x] Períodos con varios rate sets: cada uno se procesa igual (tarifa en 0 y status) y se guarda una sola vez.
+- [x] Todos los rate sets de un período terminan en el mismo status; un período ya procesado a medias («Manual, Confirmed») se completa.
+- [x] Con un Closed que no puede reabrirse, los demás rate sets pasan a Closed.
 
 ## Pendiente: Producción
 - [ ] A la espera del cierre para probar en Producción. Primera corrida: un solo pedido chico, un hotel conocido,
