@@ -201,7 +201,7 @@ def test_varios_rate_sets_se_deciden_cada_uno_con_las_mismas_reglas():
     assert r.statuses_de("Manual") == ["Manual"]
     assert r.decidir_statuses("Confirmed, Confirmed", "TR") == ("Manual", "Manual")
     assert r.decidir_statuses("Confirmed, Manual", "RACK") == ("Closed", "Closed")
-    assert r.decidir_statuses("Manual, Closed, Terminal", "TR") == (None, None, "Manual")
+    assert r.decidir_statuses("Manual, Closed, Terminal", "TR") == ("Closed", None, "Closed")      # no pueden quedar mezclados
     assert r.decidir_statuses("Closed, Closed", "RACK") == (None, None)
     with pytest.raises(r.PlanRatesError):
         r.statuses_de("Confirmed, Raro")
@@ -213,3 +213,16 @@ def test_el_plan_marca_la_edicion_si_algun_rate_set_necesita_cambio():
     plan = r.planear(p, rango)
     assert [(e.periodo.pc, e.por_set) for e in plan.ediciones] == [("TR", (None, "Manual"))]
     assert [x.pc for x in plan.ya_cerrados] == ["ND"]
+
+
+def test_los_rate_sets_nunca_quedan_con_status_distintos():
+    assert r.decidir_statuses("Manual, Confirmed", "TR") == (None, "Manual")            # ya procesado a medias: se completa
+    assert r.decidir_statuses("Confirmed, Manual", "EM") == ("Manual", None)
+    assert r.decidir_statuses("Manual, Closed", "TR") == ("Closed", None)               # Closed no se reabre: el otro se cierra
+    assert r.decidir_statuses("Closed, Confirmed", "TR") == (None, "Closed")
+    assert r.decidir_statuses("Closed, Confirmed", "RACK") == (None, "Closed")
+    assert r.decidir_statuses("Manual, Manual", "TR") == (None, None)
+    for txt, pc in (("Manual, Confirmed", "TR"), ("Manual, Closed", "TR"), ("Closed, Terminal", "ND"), ("Provisional, Manual", "RACK")):
+        actuales = r.statuses_de(txt)
+        finales = {d or a for d, a in zip(r.decidir_statuses(txt, pc), actuales)}
+        assert len(finales) == 1

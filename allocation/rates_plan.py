@@ -4,7 +4,8 @@ fechas a cerrar, y devuelve qué cortes (splits) y qué ediciones hacen falta.
 
 Reglas:
   - Una fila de la grilla es un par (período, price code). Si el período tiene varios rate sets, su status
-    viene separado por coma ("Confirmed, Manual"): cada rate set se decide con las mismas reglas, por separado.
+    viene separado por coma ("Confirmed, Manual"): cada rate set se decide con las mismas reglas, por separado, y
+    todos deben terminar en el mismo status (un período ya procesado con status mezclados se corrige).
   - Status objetivo: Manual para TR/ND/EM, Closed para el resto.
   - Closed -> se saltea. Manual -> se saltea si el objetivo es Manual, si no pasa a Closed.
     Confirmed y Provisional -> pasan al objetivo (TR/ND/EM a Manual, el resto a Closed).
@@ -100,8 +101,15 @@ def decidir_status(actual, pc):
 
 
 def decidir_statuses(txt, pc):
-    """decidir_status para cada rate set del período: una tupla con el destino de cada uno (None = no se toca)."""
-    return tuple(decidir_status(s, pc) for s in statuses_de(txt))
+    """decidir_status para cada rate set del período: una tupla con el destino de cada uno (None = no se toca).
+    Todos los rate sets de un período deben quedar en el MISMO status: si lo que resultaría es mixto (p. ej. un TR con
+    «Manual, Closed»), como un Closed nunca se reabre, los demás pasan a Closed."""
+    actuales = statuses_de(txt)
+    destinos = [decidir_status(s, pc) for s in actuales]
+    finales = [d or a for d, a in zip(destinos, actuales)]
+    if len(set(finales)) > 1 and CLOSED in finales:
+        destinos = [None if f == CLOSED else CLOSED for f in finales]
+    return tuple(destinos)
 
 
 def verificar_no_es_intocable(pc):

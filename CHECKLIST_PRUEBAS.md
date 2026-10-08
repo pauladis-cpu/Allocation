@@ -89,7 +89,8 @@ Objetivo: TR / ND / EM → **Manual**; el resto → **Closed**.
 ### 4.2b Rate sets
 - [ ] Período con **2 rate sets** (status «A, B»): ambos pasan a su destino, tarifa en 0 en los dos, un solo Save.
 - [ ] Período con **3+ rate sets**; el selector llega al último y la flecha derecha queda deshabilitada.
-- [ ] Rate sets con status distintos («Confirmed, Manual»): solo se toca el que corresponde.
+- [ ] Rate sets con status distintos («Manual, Confirmed» en TR/ND/EM): se corrige el que falta y todos quedan en Manual.
+- [ ] Status mezclado con un Closed («Manual, Closed» en TR): el Manual pasa a Closed (un Closed no se reabre) y quedan todos iguales.
 - [ ] Período con rate sets ya cerrados en todos: se saltea.
 - [ ] Verificar a mano en Tourplan el status y la tarifa de **cada** rate set después de ejecutar.
 

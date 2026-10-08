@@ -543,3 +543,14 @@ def test_destinos_distintos_a_la_cantidad_de_rate_sets_se_frenan(drv_sets):
     tr = rt.leer_periodos(drv_sets)[0]
     with pytest.raises(rp.PlanRatesError):
         rt.editar_periodo(drv_sets, HAB, rp.Edicion(tr, "Manual", ("Manual",)))
+
+
+def test_periodo_ya_procesado_a_medias_se_completa_para_que_todos_queden_iguales(drv_sets):
+    import json
+    drv_sets.execute_script("document.querySelectorAll('#tb tr')[0].querySelector('.tpcol-ratestatuses').textContent = 'Manual, Confirmed';")
+    e = next(e for e in rp.planear(rt.leer_periodos(drv_sets), RANGO_SETS).ediciones if e.periodo.pc == "TR")
+    assert e.por_set == (None, "Manual")
+    rt.editar_periodo(drv_sets, HAB, e)
+    sets = json.loads(drv_sets.execute_script("return window.ultimo;"))
+    assert [(s["status"], s["rates"][0]) for s in sets] == [("Manual", "100"), ("Manual", "0")]    # solo se tocó el 2.º
+    assert next(p for p in rt.leer_periodos(drv_sets) if p.pc == "TR").status == "Manual, Manual"
