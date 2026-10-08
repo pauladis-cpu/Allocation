@@ -15,10 +15,10 @@ de entorno + config por PC + OAuth de Google con gspread).
 |---|---|---|
 | 1 | Lectura del Sheet, pantallas, escritura de pedidos en COLA | **hecha** |
 | 2 | Lectura de allocations en Tourplan (modo lectura) | **hecha, probada en Test** |
-| 3 | Aplicar allocations (Max/Release, Save, verificación, idempotencia) | **hecha, sin probar en Tourplan real** |
-| 4 | Rates en lectura (grilla de períodos, cortes y ediciones calculados) | **hecha, sin probar en Tourplan real** |
-| 5 | Rates en aplicar (split, tarifa en 0, status, Save) | **hecha, sin probar en Tourplan real** |
-| 6 | Cola completa (toma de pedidos, EN CURSO, «Enviar y ejecutar», «Ejecutar pendientes») | **hecha, sin probar en Tourplan real** |
+| 3 | Aplicar allocations (Max/Release, Save, verificación, idempotencia) | **hecha, probada en Test** |
+| 4 | Rates en lectura (grilla de períodos, cortes y ediciones calculados) | **hecha, probada en Test** |
+| 5 | Rates en aplicar (split, tarifa en 0, status, Save) | **hecha, probada en Test** |
+| 6 | Cola completa (toma de pedidos, EN CURSO, «Enviar y ejecutar», «Ejecutar pendientes») | **hecha, probada en Test** |
 | 7 | Endurecimiento (errores, logs, reintentos) | pendiente |
 
 Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecutar» (ese pedido) y

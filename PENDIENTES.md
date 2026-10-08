@@ -1,31 +1,43 @@
 # Pendientes
 
-## Por validar en Tourplan de prueba (código hecho, sin probar contra Tourplan real)
-- [ ] Aplicar allocations (escritura de Max/Release, Save, relectura).
-- [ ] Rates: Product Find, menú Rates, grilla de períodos, split, edición de período.
-- [ ] Qué pasa con el diálogo del período después de «OK» en Split Date.
-- [ ] Dos PCs con la misma cola (toma de pedidos).
-- [ ] Filtro «Date To» del diálogo de la allocation (se amplía antes de leer los días).
+## Validado en Tourplan de prueba (todo confirmado funcionando en Test)
+- [x] Aplicar allocations (escritura de Max/Release, Save, relectura).
+- [x] Rates: Product Find, menú Rates, grilla de períodos, split, edición de período.
+- [x] Diálogo del período después de «OK» en Split Date (se espera a que Save se habilite).
+- [x] Cortes encadenados en una sola apertura del período.
+- [x] Reglas de tarifas: Provisional, Terminal (EM a Manual), FX sin editar (sí puede cortarse), Closed no se reabre.
+- [x] Regla HG (tarifas solo hasta «Vigente hasta»).
+- [x] Dos PCs con la misma cola (toma de pedidos); un TOMADO_POR viejo ya no bloquea reintentos.
+- [x] Filtro «Date To» del diálogo de la allocation.
+- [x] Estado «NO APLICA» cuando ninguna allocation cierra tarifa.
 
-## Rates: cortes encadenados (hecho, falta validar en Test)
-- [x] Los cortes de un mismo período se hacen en una sola apertura: se agrega cada fecha con «Add Split»
-  (se verifica la lista `ul.dateranges` tras cada una) y recién después «OK» + Save.
-- [ ] Validar en Test con un período que necesite 2 o más cortes.
+## Pendiente: Producción
+- [ ] A la espera del cierre para probar en Producción. Primera corrida: un solo pedido chico, un hotel conocido,
+  verificado a mano en Tourplan después (ver sección 7 de `CHECKLIST_PRUEBAS.md`).
+- [ ] Velocidad de espera: en Producción la app usa ×1.5 (fijo en `app.py`). Si aparecen avisos de «dialog de carga» o
+  de «la grilla todavía no refleja…», subirla (idea: campo «Velocidad» en Configuración).
+- [ ] Plan de reversa y confirmación explícita de Producción en Configuración antes de aplicar.
 
-## A confirmar en la próxima corrida en Test
-- [ ] Que ya no aparezca el aviso repetido de «dialog de carga seguía abierto». Si aparece, el log ahora
-  imprime el texto del dialog que lo causa (`⚠ Un dialog de carga seguía abierto tras esperar: [...]`).
+## Etapa 7 (endurecimiento): propuesta, sin empezar
+- [ ] Log de cada ejecución en archivo (con hora por línea), dentro de la carpeta de la corrida.
+- [ ] Observaciones de la COLA con la acción sugerida (p. ej. «poné PENDIENTE para reintentar»).
+- [ ] Reintentos de pasos frágiles según lo que muestre Producción (login, abrir hotel, guardado).
+- [ ] Retomar un pedido si el proceso muere sin abortar (pedido que queda EN CURSO).
+- [ ] Historial en la pestaña HISTORIAL del Sheet (a acordar: toca el esquema).
 
-## Otras grillas que podrían tener scroll virtual (revisar si aparece un caso)
-- [ ] Lista de allocations del hotel (`tp-grid[tpid="allocations-grid"]`): hoy se busca solo entre las filas renderizadas.
-- [ ] Grilla de tarifas del período (`#tabs-rates #costs-panel`): hoy se asume que las 5 filas (Twin/Double, Single,
-  Additional Adult, Child, Infant) están todas en el DOM.
+## Revisar solo si aparece un caso
+- [ ] Lista de allocations del hotel (`tp-grid[tpid="allocations-grid"]`): hoy se busca solo entre las filas renderizadas (posible scroll virtual).
+- [ ] Grilla de tarifas del período (`#tabs-rates #costs-panel`): se asume que las 5 filas están todas en el DOM.
+- [ ] Corte anticipado del scroll de Rates (`ini <= límite`): si la grilla se ordena por fecha de inicio descendente
+  (como se vio en Test) es correcto; si una habitación da «SIN PERÍODO» y el período existe, usar `TOURPLAN_RATES_ESCANEO_COMPLETO=1`.
+- [ ] Habitación `IGRHT1INT01MEJVT3` dio «SIN PERÍODO» en Test: confirmar si realmente no tenía períodos para esas fechas.
+
+## Datos del registro
+- [ ] Novotel e Ibis Obelisco sin código de hotel; 6 allocations en REVISAR; «Vigente hasta» vacío en algunas filas
+  (una allocation HG sin esa fecha frena la fase de tarifa).
+- [ ] `ID_PEDIDO` con formato fecha-hora (`P-AAAAMMDD-HHMMSS-XXXX`): funciona y es único; cambiar el formato es opcional.
 
 ## Hecho (para no perderlo de vista)
 - [x] Sin scroll vertical en las pantallas (tamaños compactos y escala automática según el alto de la ventana).
-- [x] Reglas de tarifas actualizadas (ver README): Provisional como Confirmed, Terminal a Closed, FX nunca se edita (sí puede cortarse).
-
-## Validar en Test: reglas nuevas de tarifas
-- [ ] Un período Provisional (TR/ND/EM a Manual, otros a Closed) y uno Terminal (a Closed) con el pedido real.
-- [ ] Hotel con price code FX que comparte el período: el corte (con «Split All Applicable Price Codes») corta también a FX,
-  y después FX queda sin tarifa en 0 ni cambio de status.
+- [x] Interfaz simplificada: sin modo lectura ni casilla de revisión (Volver / Enviar a la cola / Enviar y ejecutar).
+- [x] Opción OTRO + columna «Habitaciones a cerrar».
