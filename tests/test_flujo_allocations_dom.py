@@ -177,7 +177,6 @@ def test_habitaciones_y_verificacion(drv):
     assert fl.leer_habitaciones(drv, "6RABA1") == ["BUEHT6RABA1ST"]
     assert fl.verificar_habitacion("BUEHT6RABA1ST", ["BUEHT6RABA1ST"]) == (True, "")
     assert not fl.verificar_habitacion("BUEHT6RABA1XX", ["BUEHT6RABA1ST"])[0]
-    assert fl.verificar_habitacion("Multiple Options", ["A", "B"])[0]
     assert not fl.verificar_habitacion("BUEHT6RABA1ST", ["BUEHT6RABA1ST", "OTRA"])[0]
 
 

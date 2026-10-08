@@ -220,9 +220,9 @@ def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
     con = [a for a in elegidas if a.cierra_tarifa]
     if not con:
         return None
-    por_definir = [a.codigo for a in con if a.tarifas.strip().upper() in ("REVISAR", "")]
+    por_definir = [a.codigo for a in con if a.tarifas.strip().upper() == ""]
     if por_definir:
-        raise PedidoError(f"alcance de tarifas por definir (REVISAR) en: {', '.join(por_definir)}")
+        raise PedidoError(f"alcance de tarifas sin definir («Tarifas a cerrar» vacío) en: {', '.join(por_definir)}")
     sin_habitaciones = [a.codigo for a in con if a.tarifas.strip().upper() == "OTRO" and not codigos_de(a.habitaciones_a_cerrar)]
     if sin_habitaciones:
         raise PedidoError("Tarifas a cerrar = OTRO pero la columna «Habitaciones a cerrar» está vacía en: "
@@ -232,7 +232,7 @@ def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
         t = a.tarifas.strip().upper()
         if t == "LINKEADA":
             h = a.habitacion.replace(" ", "").upper()
-            if not h or h == "MULTIPLEOPTIONS":
+            if not h:
                 raise PedidoError(f"{a.codigo}: tarifa LINKEADA pero la habitación linkeada es {a.habitacion!r}.")
             habs.append(h)
         elif t == "TODAS":

@@ -19,7 +19,7 @@ Convenciones: **[B]** = bloqueante para Producción · **[E7]** = insumo para el
 - [ ] Pantalla 2: elegir una allocation, varias, y «todas»; calendario con selección simple, rango, fechas sueltas y desmarcar.
 - [ ] Fechas pasadas: no se pueden elegir / se avisa que no se consideran.
 - [ ] Fechas posteriores a «Vigente hasta»: aviso de que en allocation no se tocan.
-- [ ] Allocation con tarifas en `REVISAR`, o `OTRO` sin «Habitaciones a cerrar»: **bloquea** el envío.
+- [ ] Allocation con «Tarifas a cerrar» vacío, u `OTRO` sin «Habitaciones a cerrar»: **bloquea** el envío.
 - [ ] Allocation vacía (sin habitación): se informa, no rompe.
 - [ ] Pantalla 3: solo botones **Volver / Enviar a la cola / Enviar y ejecutar**; muestra el entorno (Test/Producción).
 - [ ] Sin scroll vertical en las 3 pantallas, con ventana chica y grande.
@@ -69,7 +69,6 @@ Una prueba por situación, en una fecha distinta cada una:
 - [ ] `OTRO` con código inexistente / de otro hotel / service type distinto de HT / `600HTL` / `ROOMS` → se frena con mensaje claro.
 - [ ] Varias allocations del pedido que piden la misma habitación → se cierra una sola vez.
 - [ ] Allocation con «Cierra tarifa» = No → fase tarifa `SALTEADO` («no cierra tarifa»).
-- [ ] Habitación linkeada = `Multiple Options` con `LINKEADA` → error claro.
 
 ### 4.2 Reglas por status y price code
 Objetivo: TR / ND / EM → **Manual**; el resto → **Closed**.

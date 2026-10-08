@@ -262,9 +262,10 @@ def _texto_cambio():
 
 
 def _por_definir(elegidas):
-    """Allocations que cierran tarifa pero cuyo alcance sigue en REVISAR: no se pueden enviar."""
+    """Allocations que cierran tarifa pero no tienen definido el alcance («Tarifas a cerrar» vacío, u OTRO sin
+    «Habitaciones a cerrar»): no se pueden enviar."""
     return [a for a in elegidas if a.cierra_tarifa and (
-        a.tarifas.strip().upper() == "REVISAR"
+        not a.tarifas.strip()
         or (a.tarifas.strip().upper() == "OTRO" and not a.habitaciones_a_cerrar.strip()))]
 
 
@@ -552,7 +553,7 @@ def render_fechas():
         por_definir = _por_definir(elegidas)
         if por_definir:
             st.error("No se puede continuar: " + ", ".join(a.codigo for a in por_definir)
-                     + " cierra tarifa pero falta definir qué habitaciones (REVISAR, o OTRO sin «Habitaciones a cerrar»). "
+                     + " cierra tarifa pero falta definir qué habitaciones («Tarifas a cerrar» vacío, u OTRO sin «Habitaciones a cerrar»). "
                      "Completá el registro y recargá.")
         with card("origen"):
             st.markdown("**Origen (opcional)**")

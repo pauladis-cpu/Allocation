@@ -163,8 +163,8 @@ def test_habitaciones_prohibidas_y_union_sin_repetir(monkeypatch):
     from dataclasses import replace
     a2 = replace(ra, codigo="OTRA", tarifas="TODAS")
     assert runner.habitaciones_a_cerrar(None, "6RABA1", [ra, a2]) == ["BUEHT6RABA1ST", "BUEHT6RABA1SU"]
-    with pytest.raises(runner.PedidoError, match="REVISAR"):
-        runner.habitaciones_a_cerrar(None, "6RABA1", [replace(ra, tarifas="REVISAR")])
+    with pytest.raises(runner.PedidoError, match="sin definir"):
+        runner.habitaciones_a_cerrar(None, "6RABA1", [replace(ra, tarifas="")])
     assert runner.habitaciones_a_cerrar(None, "6RABA1", [replace(ra, cierra_tarifa=False)]) is None
 
 

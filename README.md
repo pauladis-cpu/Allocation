@@ -87,7 +87,6 @@ La columna `Hotel` de COLA es una fórmula del Sheet: la app nunca la escribe.
 | `LINKEADA` | solo la habitación linkeada a la allocation |
 | `TODAS` | todas las habitaciones HT del hotel, excepto `600HTL` y `ROOMS` (se lee de Tourplan) |
 | `OTRO` | las habitaciones que figuren en la columna **«Habitaciones a cerrar»** |
-| `REVISAR` | falta definir: el pedido no se puede enviar ni ejecutar |
 
 **«Habitaciones a cerrar»** (columna opcional, la ubicás donde quieras, por ejemplo entre «Tarifas a cerrar» y
 «Vigente hasta») solo se completa con `OTRO`: códigos largos (`location + HT + código de hotel + opción`, ej.

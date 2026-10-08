@@ -39,7 +39,7 @@ Se importa desde `Registro_de_Allocation_v3.xlsx`. Pestañas: `LEEME`, `ALLOCATI
 | Hotel | Nombre. |
 | Allocation (código) | Columna Name de la grilla de Allocations (ej. `ST`, `1EDE01 CL`, `SIN FS-CIERRA D`). |
 | Descripción exacta en Tourplan | Columna Description de esa grilla. |
-| Habitación linkeada (código) | **Código largo**: location + service type + código de hotel + option, ej. `BRCHT1EDE01ST`. Vacía = allocation vacía. Puede decir `Multiple Options`. |
+| Habitación linkeada (código) | **Código largo**: location + service type + código de hotel + option, ej. `BRCHT1EDE01ST`. Vacía = allocation vacía. |
 | Descripción de la habitación | Informativa. |
 | Cierra tarifa | `SI` / `NO`. |
 | Tarifas a cerrar | `LINKEADA`, `TODAS`, o códigos largos separados por coma. |
@@ -150,7 +150,7 @@ Convenciones generales: ver sección 8. Los selectores marcados como estables si
    - Clic en `tp-button.filter button` y esperá a que la grilla se actualice.
 5. **Elegir la allocation** en `tp-grid[tpid="allocations-grid"] tbody tr`: la fila donde `td.tpcol-name` es igual al código del Sheet **y** `td.tpcol-description` es igual a la descripción del Sheet (recortando y normalizando espacios, sin distinguir mayúsculas). Si no hay ninguna o hay más de una, error. Hacé clic en `td.tpcol-description`.
 6. **Verificar el diálogo.** Se abre en `body > tp-dialog` (fuera de la lista; acotá siempre los selectores a su contenedor, porque tiene su propio filtro con las mismas clases). El título (`.tpmodal-allocation h3`) debe decir `Allocation Detail - <código>`.
-7. **Verificar la habitación linkeada.** La tabla "Services Included" de la pestaña Setup (`#setup-tab .tpdestination tbody tr`) está en el DOM aunque la pestaña esté oculta. Cada fila tiene Location, Service, Option. Armá `location + service + código de hotel + option` y compará con "Habitación linkeada" del Sheet. Si el Sheet dice `Multiple Options`, omití la comparación y registralo en OBSERVACIONES. **Si el código, la descripción o la habitación no coinciden, no escribas nada.**
+7. **Verificar la habitación linkeada.** La tabla "Services Included" de la pestaña Setup (`#setup-tab .tpdestination tbody tr`) está en el DOM aunque la pestaña esté oculta. Cada fila tiene Location, Service, Option. Armá `location + service + código de hotel + option` y compará con "Habitación linkeada" del Sheet. **Si el código, la descripción o la habitación no coinciden, no escribas nada.**
 8. **Allocation vacía** (habitación linkeada vacía en el Sheet): verificá que la pestaña Days no tenga filas `.tpbodyrow` y que "Services Included" esté vacío. Si es así, Exit, `ESTADO_CIERRE_ALLOTMENT = SALTEADO` ("allocation vacía") y pasá a tarifas. Si no coincide, frená.
 9. **Grilla de días** (`#days-tab cdk-virtual-scroll-viewport`, es una grilla virtual):
    - Cada fila es `div.tpbodyrow` con `data-index`. La fecha está en `.datecol.date label` con formato `05/Oct/2026` (meses en inglés abreviado: usá tu propia tabla, no el idioma del sistema). Las filas miden 35 px y son días consecutivos desde "Fecha desde".

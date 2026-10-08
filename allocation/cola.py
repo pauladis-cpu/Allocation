@@ -270,7 +270,7 @@ def formato_error(detalle):
 _SUGERENCIAS = (
     ("no figura en el registro", "Revisá el código de hotel en la hoja ALLOCATIONS y en el pedido.", True),
     ("no encontrada(s) en el registro", "Revisá el código de la allocation en la hoja ALLOCATIONS.", True),
-    ("alcance de tarifas por definir", "Completá «Tarifas a cerrar» en la hoja ALLOCATIONS (no puede quedar en REVISAR).", True),
+    ("alcance de tarifas sin definir", "Completá «Tarifas a cerrar» en la hoja ALLOCATIONS (no puede quedar vacío).", True),
     ("«habitaciones a cerrar» está vacía", "Completá la columna «Habitaciones a cerrar» de esa allocation.", True),
     ("«vigente hasta»", "Cargá una fecha válida en «Vigente hasta» (la allocation es HG).", True),
     ("habitación linkeada", "Revisá la habitación linkeada de la allocation en la hoja ALLOCATIONS.", True),

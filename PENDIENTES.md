@@ -35,11 +35,8 @@
 - [ ] Grilla de tarifas del período (`#tabs-rates #costs-panel`): se asume que las 5 filas están todas en el DOM.
 - [ ] Corte anticipado del scroll de Rates (`ini <= límite`): si la grilla se ordena por fecha de inicio descendente
   (como se vio en Test) es correcto; si una habitación da «SIN PERÍODO» y el período existe, usar `TOURPLAN_RATES_ESCANEO_COMPLETO=1`.
-- [ ] Habitación `IGRHT1INT01MEJVT3` dio «SIN PERÍODO» en Test: confirmar si realmente no tenía períodos para esas fechas.
 
 ## Datos del registro
-- [ ] Novotel e Ibis Obelisco sin código de hotel; 6 allocations en REVISAR; «Vigente hasta» vacío en algunas filas
-  (una allocation HG sin esa fecha frena la fase de tarifa).
 - [ ] `ID_PEDIDO` con formato fecha-hora (`P-AAAAMMDD-HHMMSS-XXXX`): funciona y es único; cambiar el formato es opcional.
 
 ## Hecho (para no perderlo de vista)

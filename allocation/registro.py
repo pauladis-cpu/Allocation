@@ -47,10 +47,10 @@ class AllocationReg:
     hotel: str
     codigo: str
     descripcion: str
-    habitacion: str            # código largo; "" = allocation vacía; puede ser "Multiple Options"
+    habitacion: str            # código largo; "" = allocation vacía
     desc_habitacion: str
     cierra_tarifa: bool
-    tarifas: str               # LINKEADA | TODAS | OTRO | REVISAR
+    tarifas: str               # LINKEADA | TODAS | OTRO
     vigente_hasta: object      # date | None
     vigente_hasta_txt: str
     notas: str

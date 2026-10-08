@@ -252,8 +252,6 @@ def cantidad_filas_dias(driver):
 def verificar_habitacion(habitacion_registro, habitaciones_tp):
     """Compara contra el registro. Devuelve (ok, observación). Si no coincide NO se escribe nada."""
     reg = (habitacion_registro or "").replace(" ", "").upper()
-    if reg == "MULTIPLEOPTIONS":
-        return True, f"Registro dice 'Multiple Options': no se comparó la habitación (Tourplan: {habitaciones_tp})."
     if len(habitaciones_tp) == 1 and habitaciones_tp[0] == reg:
         return True, ""
     return False, f"Habitación linkeada: registro={reg!r}, Tourplan={habitaciones_tp}."
