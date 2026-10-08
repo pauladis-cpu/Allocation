@@ -228,3 +228,12 @@ def test_toma_de_nuevo_un_pedido_reseteado_a_pendiente_aunque_quede_un_tomado_po
     assert cola.tomar_pedido(ws, 2, "Ana", fases=("tarifa",), dormir=lambda s: None)       # reintento propio
     ws = _ws_con_pedido(TOMADO_POR="Luis", TOMADO_EN="2026-10-07 12:00:00")
     assert cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)                          # resto de otra PC ya terminada
+
+
+def test_sugerencia_de_accion_ante_un_error():
+    s = cola.sugerencia("ERROR: el hotel 'X' no figura en el registro.")
+    assert "ALLOCATIONS" in s and "PENDIENTE" in s
+    assert "Product Find" in cola.sugerencia("IGRHT1X: No encontré la habitación IGRHT1X en el Product Find del hotel")
+    assert "Vigente hasta" in cola.sugerencia("A: la descripción empieza con HG pero «Vigente hasta» no tiene una fecha")
+    assert "PENDIENTE" not in cola.sugerencia("no quedan fechas vigentes para cerrar.")     # reintentar no sirve
+    assert "log" in cola.sugerencia("algo inesperado") and "PENDIENTE" in cola.sugerencia("algo inesperado")

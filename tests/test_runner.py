@@ -223,3 +223,40 @@ def test_hg_cierra_tarifas_solo_hasta_la_vigencia():
     assert runner.fechas_por_habitacion(["BUEHT6RABA1ST"], [hg, comun], fechas) == {"BUEHT6RABA1ST": sorted(fechas)}
     with pytest.raises(runner.PedidoError, match="HG"):
         runner.fechas_de_tarifa(replace(hg, vigente_hasta=None, vigente_hasta_txt=""), fechas)
+
+
+def test_el_log_lleva_hora_y_se_guarda_en_archivo(tmp_path, capsys, monkeypatch):
+    import sys
+    from datetime import datetime
+    monkeypatch.setattr(sys, "stdout", sys.stdout)       # que pytest restaure stdout/stderr al terminar
+    monkeypatch.setattr(sys, "stderr", sys.stderr)
+    tee, ruta = runner.activar_log_a_archivo(ahora=datetime(2026, 10, 8, 9, 30, 0), directorio=str(tmp_path))
+    print("hola")
+    print("línea 1\nlínea 2")
+    tee.cerrar()
+    assert ruta.endswith("ejecucion_20261008_093000.log")
+    lineas = open(ruta, encoding="utf-8").read().splitlines()
+    assert [l[11:] for l in lineas] == ["hola", "línea 1", "línea 2"]
+    assert all(l.startswith("[") and l[3] == ":" and l[9] == "]" for l in lineas)
+
+
+def test_se_conservan_solo_los_ultimos_logs(tmp_path, monkeypatch):
+    import sys
+    from datetime import datetime
+    monkeypatch.setattr(sys, "stdout", sys.stdout)
+    monkeypatch.setattr(sys, "stderr", sys.stderr)
+    monkeypatch.setattr(runner, "LOGS_A_CONSERVAR", 3)
+    for i in range(5):
+        (tmp_path / f"ejecucion_2026100{i}_000000.log").write_text("x")
+    tee, ruta = runner.activar_log_a_archivo(ahora=datetime(2026, 10, 8, 9, 0, 0), directorio=str(tmp_path))
+    tee.cerrar()
+    assert len(list(tmp_path.glob("ejecucion_*.log"))) == 3
+
+
+def test_un_error_de_fase_deja_la_accion_sugerida_en_las_observaciones():
+    ws = _ws(**{cola.C_HOTEL_COD: "NOEXISTE"})
+    fila0 = _fila(ws)
+    cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)
+    runner.ejecutar_pedido(object(), ws, fila0, ALLOCS, HOY, aplicar=True)
+    f = _fila(ws)
+    assert f[cola.C_EST_ALLOT].startswith("ERROR") and "Qué hacer" in f[cola.C_OBS_ALLOT] and "PENDIENTE" in f[cola.C_OBS_TARIFA]

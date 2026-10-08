@@ -17,6 +17,9 @@ Variables de entorno opcionales:
   TOURPLAN_SOLO_PEDIDO  ID_PEDIDO: procesa solo ese pedido ("Enviar y ejecutar").
   TOURPLAN_QUIEN        nombre que se escribe en TOMADO_POR.
   TOURPLAN_MODO=lectura fuerza lectura para todas las filas.
+  TOURPLAN_LOG_DIR      carpeta donde se guarda el log de cada ejecución (por defecto ~/.tourplan-allocation/logs).
+
+Cada línea del log (pantalla y archivo) lleva la hora [HH:MM:SS]; se conservan los últimos LOGS_A_CONSERVAR archivos.
 """
 import os
 import re
@@ -43,6 +46,75 @@ FORZAR_LECTURA = os.environ.get("TOURPLAN_MODO", "") == MODO_LECTURA
 PERMITIR_PRODUCCION = os.environ.get("TOURPLAN_PERMITIR_PRODUCCION", "") == "1"
 
 ALLOT, TARIFA = "allotment", "tarifa"
+
+LOG_DIR = os.environ.get("TOURPLAN_LOG_DIR", "").strip() or os.path.join(
+    os.path.expanduser("~"), ".tourplan-allocation", "logs")
+LOGS_A_CONSERVAR = 30
+
+
+class _LogConHora:
+    """Envuelve stdout/stderr: antepone la hora a cada línea y la copia también a un archivo."""
+
+    def __init__(self, destino, archivo):
+        self._destino, self._archivo, self._resto = destino, archivo, ""
+
+    def write(self, texto):
+        self._resto += texto
+        while "\n" in self._resto:
+            linea, self._resto = self._resto.split("\n", 1)
+            self._emitir(linea)
+        return len(texto)
+
+    def _emitir(self, linea):
+        salida = f"[{datetime.now():%H:%M:%S}] {linea}" if linea.strip() else ""
+        for d in (self._destino, self._archivo):
+            try:
+                d.write(salida + "\n")
+                d.flush()
+            except Exception:
+                pass            # un problema con el log nunca debe frenar la ejecución
+
+    def flush(self):
+        for d in (self._destino, self._archivo):
+            try:
+                d.flush()
+            except Exception:
+                pass
+
+    def cerrar(self):
+        if self._resto.strip():
+            self._emitir(self._resto)
+        self._resto = ""
+        try:
+            self._archivo.close()
+        except Exception:
+            pass
+
+    def __getattr__(self, nombre):
+        return getattr(self._destino, nombre)
+
+
+def activar_log_a_archivo(ahora=None, directorio=None):
+    """Redirige stdout y stderr a una versión con hora que además se guarda en un archivo del directorio de logs.
+    Devuelve (tee, ruta) o (None, None) si no se pudo crear el archivo (la ejecución sigue igual)."""
+    directorio = directorio or LOG_DIR
+    ahora = ahora or datetime.now()
+    try:
+        os.makedirs(directorio, exist_ok=True)
+        ruta = os.path.join(directorio, f"ejecucion_{ahora:%Y%m%d_%H%M%S}.log")
+        archivo = open(ruta, "w", encoding="utf-8")
+        viejos = sorted(f for f in os.listdir(directorio) if f.startswith("ejecucion_") and f.endswith(".log"))
+        for f in viejos[:-LOGS_A_CONSERVAR]:
+            try:
+                os.remove(os.path.join(directorio, f))
+            except OSError:
+                pass
+    except OSError:
+        return None, None
+    tee = _LogConHora(sys.stdout, archivo)
+    sys.stdout = tee
+    sys.stderr = tee            # el traceback también queda en el archivo (la app ya junta stderr con stdout)
+    return tee, ruta
 
 
 def log(msg):
@@ -273,6 +345,10 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
     en_curso = set(fases) if aplicar else set()
 
     def cerrar_fase(fase, estado, obs):
+        if aplicar and estado.startswith(cola.ESTADO_ERROR):
+            accion = cola.sugerencia(estado)
+            log(f"  ▸ {accion}")
+            obs = f"{obs} ▸ {accion}" if obs else accion
         log(f"  ■ Fase {fase}: {estado or '(lectura: solo observaciones)'}"
             + (f" — {obs[:500]}" if obs else ""))
         if aplicar:
@@ -401,4 +477,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _tee, _ruta_log = activar_log_a_archivo()
+    if _ruta_log:
+        print(f"📝 Log de esta ejecución: {_ruta_log}")
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        traceback.print_exc()       # antes de cerrar el archivo, para que el error también quede en el log
+        sys.exit(1)
+    finally:
+        if _tee:
+            _tee.cerrar()

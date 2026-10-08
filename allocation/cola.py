@@ -264,3 +264,31 @@ def escribir_fase(ws, row_idx, fase, estado, observaciones=None):
 
 def formato_error(detalle):
     return f"{ESTADO_ERROR}: {detalle}"
+
+
+# (fragmento en minúsculas del error, qué corregir, ¿sirve reintentar?). Gana la primera que coincide.
+_SUGERENCIAS = (
+    ("no figura en el registro", "Revisá el código de hotel en la hoja ALLOCATIONS y en el pedido.", True),
+    ("no encontrada(s) en el registro", "Revisá el código de la allocation en la hoja ALLOCATIONS.", True),
+    ("alcance de tarifas por definir", "Completá «Tarifas a cerrar» en la hoja ALLOCATIONS (no puede quedar en REVISAR).", True),
+    ("«habitaciones a cerrar» está vacía", "Completá la columna «Habitaciones a cerrar» de esa allocation.", True),
+    ("«vigente hasta»", "Cargá una fecha válida en «Vigente hasta» (la allocation es HG).", True),
+    ("habitación linkeada", "Revisá la habitación linkeada de la allocation en la hoja ALLOCATIONS.", True),
+    ("no es service type ht", "Solo se cierran habitaciones HT: corregí el código en el registro.", True),
+    ("está excluida", "Nunca se cierran 600HTL ni ROOMS: corregí el código en el registro.", True),
+    ("no encontré la habitación", "Verificá que el código exista en el Product Find del hotel en Tourplan.", True),
+    ("fechas ilegibles", "Revisá la columna de fechas del pedido.", True),
+    ("no quedan fechas vigentes", "Las fechas ya pasaron: no hay nada para reintentar.", False),
+    ("login", "Revisá usuario y clave de Tourplan en Configuración.", True),
+)
+_REINTENTO = "Después poné PENDIENTE en el estado de esta fase para reintentar."
+
+
+def sugerencia(detalle):
+    """Qué hacer ante un error (texto para OBSERVACIONES). Siempre indica cómo reintentar, salvo que no tenga sentido."""
+    d = (detalle or "").lower()
+    for fragmento, que_hacer, reintentable in _SUGERENCIAS:
+        if fragmento in d:
+            return f"Qué hacer: {que_hacer}" + (f" {_REINTENTO}" if reintentable else "")
+    return ("Qué hacer: poné PENDIENTE en el estado de esta fase para reintentar; si vuelve a fallar, "
+            "revisá el log de la ejecución.")

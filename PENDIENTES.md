@@ -19,8 +19,8 @@
 - [ ] Plan de reversa y confirmación explícita de Producción en Configuración antes de aplicar.
 
 ## Etapa 7 (endurecimiento): propuesta, sin empezar
-- [ ] Log de cada ejecución en archivo (con hora por línea), dentro de la carpeta de la corrida.
-- [ ] Observaciones de la COLA con la acción sugerida (p. ej. «poné PENDIENTE para reintentar»).
+- [x] Log de cada ejecución en archivo con hora por línea: `~/.tourplan-allocation/logs/ejecucion_AAAAMMDD_HHMMSS.log` (se conservan los últimos 30).
+- [x] Observaciones de la COLA con la acción sugerida cuando una fase da ERROR (`Qué hacer: …`).
 - [ ] Reintentos de pasos frágiles según lo que muestre Producción (login, abrir hotel, guardado).
 - [ ] Retomar un pedido si el proceso muere sin abortar (pedido que queda EN CURSO).
 - [ ] Historial en la pestaña HISTORIAL del Sheet (a acordar: toca el esquema).
