@@ -237,10 +237,10 @@ def test_terminal_y_provisional_se_editan_segun_las_reglas(drv):
         s[0].textContent = 'Terminal'; s[1].textContent = 'Provisional'; }""")   # TR Terminal, RACK Provisional
     rangos = [(date(2026, 12, 1), date(2026, 12, 25))]
     plan = rp.planear(rt.leer_periodos(drv, rangos), rangos)
-    assert {(e.periodo.pc, e.nuevo_status) for e in plan.ediciones} == {("TR", "Closed"), ("RACK", "Closed")}   # Terminal -> Closed
+    assert {(e.periodo.pc, e.nuevo_status) for e in plan.ediciones} == {("TR", "Manual"), ("RACK", "Closed")}   # Terminal -> objetivo (TR Manual)
     for e in plan.ediciones:
         rt.editar_periodo(drv, HAB, e)
-    assert [p.status for p in rt.leer_periodos(drv, rangos)] == ["Closed", "Closed", "Closed"]
+    assert [p.status for p in rt.leer_periodos(drv, rangos)] == ["Manual", "Closed", "Closed"]
 
 
 def test_provisional_de_price_code_manual_pasa_a_manual(drv):

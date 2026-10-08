@@ -5,7 +5,7 @@
 - [x] Rates: Product Find, menú Rates, grilla de períodos, split, edición de período.
 - [x] Diálogo del período después de «OK» en Split Date (se espera a que Save se habilite).
 - [x] Cortes encadenados en una sola apertura del período.
-- [x] Reglas de tarifas: Provisional, Terminal (EM a Manual), FX sin editar (sí puede cortarse), Closed no se reabre.
+- [x] Reglas de tarifas: Provisional, Terminal (TR/ND/EM a Manual, el resto a Closed), FX sin editar (sí puede cortarse), Closed no se reabre.
 - [x] Regla HG (tarifas solo hasta «Vigente hasta»).
 - [x] Dos PCs con la misma cola (toma de pedidos); un TOMADO_POR viejo ya no bloquea reintentos.
 - [x] Filtro «Date To» del diálogo de la allocation.

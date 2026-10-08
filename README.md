@@ -35,7 +35,7 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 
 **Reglas de tarifas (actualizan la especificación original):**
 - Status objetivo: Manual para TR, ND y EM; Closed para el resto.
-- Confirmed y **Provisional** pasan al objetivo. **Terminal** pasa a Closed, salvo **EM** que pasa a Manual.
+- Confirmed y **Provisional** pasan al objetivo. **Terminal** también pasa al objetivo (TR, ND y EM a Manual; el resto a Closed).
 - Closed se saltea y **nunca** pasa a Manual. Manual pasa a Closed salvo en TR, ND y EM.
 - Al price code **FX nunca se le cambia la tarifa ni el status**. Su período sí puede cortarse (split):
   si comparte el período con otros price codes, el corte con «Split All Applicable Price Codes» lo corta también.

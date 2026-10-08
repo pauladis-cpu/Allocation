@@ -76,7 +76,7 @@ Objetivo: TR / ND / EM → **Manual**; el resto → **Closed**.
 - [ ] TR, ND, EM en **Confirmed** → Manual.
 - [ ] Otros price codes en **Confirmed** → Closed.
 - [ ] **Provisional**: igual que Confirmed (TR/ND/EM → Manual, otros → Closed).
-- [ ] **Terminal**: → Closed, **salvo EM → Manual**.
+- [ ] **Terminal**: igual que Confirmed: TR / ND / EM → Manual; el resto → Closed.
 - [ ] Ya en **Closed** → se saltea y **nunca** pasa a Manual (ni TR/ND/EM).
 - [ ] Ya en **Manual** → TR/ND/EM se saltea; otros → Closed.
 - [ ] **FX**: nunca se edita (ni tarifa ni status), aunque esté Confirmed.
