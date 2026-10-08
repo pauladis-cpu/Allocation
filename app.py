@@ -120,7 +120,8 @@ CSS = """
 
 /* paso 1: resultados y ficha */
 [class*="st-key-res_"] { position:relative; }
-[class*="st-key-res_"] [data-testid="stElementContainer"]:has(button) { position:absolute; inset:0; margin:0; }
+[class*="st-key-res_"] [data-testid="stElementContainer"]:has(button) { position:absolute; inset:0; margin:0; width:100% !important; height:100% !important; }
+[class*="st-key-res_"] [data-testid="stButton"] { width:100% !important; height:100% !important; }
 [class*="st-key-res_"] button { position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }
 .res { background:#fff; border:1px solid var(--bd); border-radius:12px; padding:.55rem 1rem; display:flex; justify-content:space-between; align-items:center; gap:10px; }
 .res.sel { border:2px solid var(--acc); }
