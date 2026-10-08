@@ -146,7 +146,7 @@ def test_pedido_con_hotel_que_no_cierra_tarifa(flujo):
     cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)
     runner.ejecutar_pedido(object(), ws, fila0, ALLOCS, HOY, aplicar=True)
     f = _fila(ws)
-    assert f[cola.C_EST_TARIFA] == "SALTEADO" and f[cola.C_OBS_TARIFA].endswith("no cierra tarifa")
+    assert f[cola.C_EST_TARIFA] == "NO APLICA" and f[cola.C_OBS_TARIFA].endswith("no cierra tarifa")
     assert [c[1] for c in flujo if c[0] == "allocation"] == ["1EDE01 CL", "SPWV"]
 
 

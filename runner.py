@@ -5,7 +5,7 @@ El MODO sale de cada fila de la cola:
   - lectura: no escribe nada en Tourplan, no toma el pedido ni cambia ningún ESTADO. Deja el plan
     (qué cerraría, qué saltearía y por qué) en OBSERVACIONES_CIERRE_ALLOTMENT / _TARIFA.
   - aplicar: toma el pedido (EN CURSO / TOMADO_POR / TOMADO_EN, con relectura para varias PCs),
-    cierra las fechas en la allocation y después las tarifas, y deja OK / SALTEADO / ERROR por fase.
+    cierra las fechas en la allocation y después las tarifas, y deja OK / SALTEADO / NO APLICA / ERROR por fase.
 
 Todo es resumible e idempotente: solo se ejecutan las fases PENDIENTE; volver a correr un pedido
 terminado no cambia nada. Un error en un pedido no frena el lote. Nunca se reabre una fecha.
@@ -226,7 +226,7 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         return cola.formato_error(str(e)), ""
     if habs is None:
         log("    ○ ninguna allocation del pedido cierra tarifa")
-        return cola.ESTADO_SALTEADO, "no cierra tarifa"
+        return cola.ESTADO_NO_APLICA, "no cierra tarifa"
     log(f"    habitaciones a cerrar ({len(habs)}): {', '.join(habs)}")
     try:
         fechas_hab = fechas_por_habitacion(habs, elegidas, fechas)

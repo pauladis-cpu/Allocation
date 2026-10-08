@@ -30,6 +30,7 @@ ESTADO_PENDIENTE = "PENDIENTE"
 ESTADO_EN_CURSO = "EN CURSO"
 ESTADO_OK = "OK"
 ESTADO_SALTEADO = "SALTEADO"
+ESTADO_NO_APLICA = "NO APLICA"   # fase que no corresponde al pedido (p. ej. ninguna allocation cierra tarifa)
 ESTADO_ERROR = "ERROR"   # se escribe como "ERROR: detalle"
 
 # Valor de "Allocation(es)" en la cola para "todas las del hotel".

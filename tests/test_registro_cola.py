@@ -145,6 +145,8 @@ def test_estados_y_abandono():
     f[cola.C_TOMADO_EN] = "2026-10-05 11:50:00"
     assert not cola.posiblemente_abandonado(f, 30, ahora)
     assert cola.estado_global({cola.C_EST_ALLOT: "OK", cola.C_EST_TARIFA: "SALTEADO"}) == "OK"
+    assert cola.estado_global({cola.C_EST_ALLOT: "OK", cola.C_EST_TARIFA: "NO APLICA"}) == "OK"
+    assert cola.clasificar_estado("no aplica") == "NO APLICA"
     assert cola.estado_global({cola.C_EST_ALLOT: "OK", cola.C_EST_TARIFA: "ERROR: x"}) == "ERROR"
     assert cola.clasificar_estado("OK (3 cerradas)") == "OK"
 

@@ -163,7 +163,7 @@ table.cola .hotel { font-weight:600; } table.cola .obs { max-width:420px; color:
 .pill { font-size:.8rem; font-weight:700; padding:.2rem .65rem; border-radius:999px; white-space:nowrap; display:inline-block; }
 .pill.PENDIENTE { background:#e8eaee; color:#4b5563; } .pill.EN_CURSO { background:#e0e9fb; color:#1a3f8f; }
 .pill.OK { background:var(--ok-bg); color:var(--ok); } .pill.SALTEADO { background:#fdeec8; color:#7a4e00; }
-.pill.ERROR { background:#fbe1e1; color:#9b1c1c; } .pill.OTRO { background:#eceef1; color:#4b5563; }
+.pill.NO_APLICA { background:#eceef1; color:#6b7280; } .pill.ERROR { background:#fbe1e1; color:#9b1c1c; } .pill.OTRO { background:#eceef1; color:#4b5563; }
 """
 
 
@@ -802,7 +802,7 @@ def render_cola():
     if not lista:
         st.caption(motivo)
     _tabla_cola()
-    st.markdown('<div class="ayuda" style="margin-top:.6rem">Estados: PENDIENTE, EN CURSO, OK, SALTEADO o ERROR '
+    st.markdown('<div class="ayuda" style="margin-top:.6rem">Estados: PENDIENTE, EN CURSO, OK, SALTEADO, NO APLICA o ERROR '
                 'con detalle. EN CURSO: lo está ejecutando una PC. &nbsp;&nbsp; El script no frena el lote por un '
                 f'error puntual y se puede retomar. La vista se actualiza sola cada {INTERVALO_COLA} segundos.</div>',
                 unsafe_allow_html=True)

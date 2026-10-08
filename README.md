@@ -30,7 +30,7 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 - **lectura**: no escribe nada en Tourplan, no toma el pedido ni cambia estados; deja el plan en
   `OBSERVACIONES_CIERRE_ALLOTMENT` y `OBSERVACIONES_CIERRE_TARIFA`.
 - **aplicar**: toma el pedido (`EN CURSO` / `TOMADO_POR` / `TOMADO_EN`, con relectura para varias PCs),
-  cierra las fechas en la allocation y después las tarifas, y deja `OK` / `SALTEADO` / `ERROR: detalle`
+  cierra las fechas en la allocation y después las tarifas, y deja `OK` / `SALTEADO` / `NO APLICA` / `ERROR: detalle`
   por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
 
 **Reglas de tarifas (actualizan la especificación original):**

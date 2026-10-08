@@ -15,7 +15,7 @@ from datetime import datetime
 
 from allocation.constantes import (
     ALLOCATIONS_TODAS, ESTADO_EN_CURSO, ESTADO_ERROR, ESTADO_OK, ESTADO_PENDIENTE,
-    ESTADO_SALTEADO, MODO_APLICAR, MODO_LECTURA, SEPARADOR_ALLOCATIONS,
+    ESTADO_NO_APLICA, ESTADO_SALTEADO, MODO_APLICAR, MODO_LECTURA, SEPARADOR_ALLOCATIONS,
 )
 from allocation.fechas import a_texto_normalizado, de_texto_normalizado
 from allocation.registro import normalizar
@@ -139,6 +139,8 @@ def clasificar_estado(valor):
         return ESTADO_OK
     if v == ESTADO_SALTEADO or v.startswith(ESTADO_SALTEADO + " "):
         return ESTADO_SALTEADO
+    if v == ESTADO_NO_APLICA or v.startswith(ESTADO_NO_APLICA + " "):
+        return ESTADO_NO_APLICA
     if v.startswith(ESTADO_ERROR):
         return ESTADO_ERROR
     return "OTRO"
@@ -166,12 +168,12 @@ def _en_curso(fila):
 
 
 def estado_global(fila):
-    """Un resumen por pedido: EN CURSO > ERROR > PENDIENTE > OK/SALTEADO."""
+    """Un resumen por pedido: EN CURSO > ERROR > PENDIENTE > OK/SALTEADO/NO APLICA."""
     est = [clasificar_estado(fila.get(C_EST_ALLOT)), clasificar_estado(fila.get(C_EST_TARIFA))]
     for prioridad in (ESTADO_EN_CURSO, ESTADO_ERROR, ESTADO_PENDIENTE):
         if prioridad in est:
             return prioridad
-    if all(e in (ESTADO_OK, ESTADO_SALTEADO) for e in est):
+    if all(e in (ESTADO_OK, ESTADO_SALTEADO, ESTADO_NO_APLICA) for e in est):
         return ESTADO_OK
     return "OTRO"
 
