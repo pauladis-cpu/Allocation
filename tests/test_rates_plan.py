@@ -194,3 +194,22 @@ def test_si_la_grilla_viene_ascendente_no_corta():
     asc = [P(D(2026, 1, 1), D(2026, 1, 31), "TR", "Confirmed"), P(D(2026, 5, 1), D(2026, 5, 31), "TR", "Confirmed"),
            P(D(2026, 9, 1), D(2026, 9, 30), "TR", "Confirmed")]
     assert not r.ya_paso_el_objetivo(asc, [(D(2026, 10, 1), D(2026, 10, 1))])
+
+
+def test_varios_rate_sets_se_deciden_cada_uno_con_las_mismas_reglas():
+    assert r.statuses_de("Confirmed, Manual") == ["Confirmed", "Manual"]
+    assert r.statuses_de("Manual") == ["Manual"]
+    assert r.decidir_statuses("Confirmed, Confirmed", "TR") == ("Manual", "Manual")
+    assert r.decidir_statuses("Confirmed, Manual", "RACK") == ("Closed", "Closed")
+    assert r.decidir_statuses("Manual, Closed, Terminal", "TR") == (None, None, "Manual")
+    assert r.decidir_statuses("Closed, Closed", "RACK") == (None, None)
+    with pytest.raises(r.PlanRatesError):
+        r.statuses_de("Confirmed, Raro")
+
+
+def test_el_plan_marca_la_edicion_si_algun_rate_set_necesita_cambio():
+    rango = [(D(2026, 12, 1), D(2026, 12, 25))]
+    p = [P(D(2026, 12, 1), D(2026, 12, 25), "TR", "Manual, Confirmed"), P(D(2026, 12, 1), D(2026, 12, 25), "ND", "Manual, Manual")]
+    plan = r.planear(p, rango)
+    assert [(e.periodo.pc, e.por_set) for e in plan.ediciones] == [("TR", (None, "Manual"))]
+    assert [x.pc for x in plan.ya_cerrados] == ["ND"]

@@ -547,22 +547,80 @@ def elegir_status(driver, actual, nuevo):
         raise FlujoError(f"Tras el clic el status no quedó en {nuevo}.")
 
 
+_JS_RATESET = _JS_DLG + """
+    var r = dlg.querySelector('#rate-set'); if (!r) return null;
+    var i = r.querySelector('.tpcombo input');
+    var izq = r.querySelector('button.tpbutton-navleft'), der = r.querySelector('button.tpbutton-navright');
+    return {nombre: i ? i.value : '', izq: izq ? !izq.disabled : null, der: der ? !der.disabled : null};"""
+
+
+def _estado_rateset(driver):
+    info = driver.execute_script(_JS_RATESET)
+    if info is None or info["izq"] is None or info["der"] is None:
+        raise FlujoError("No encontré el selector de rate sets (#rate-set) del diálogo del período.")
+    return info
+
+
+def _abrir_pestana(driver, tab):
+    """Pestaña 'rates' (tarifas) o 'rateset' (status) del diálogo del período."""
+    espera = {"rates": "var t = dlg.querySelector('#tabs-rates'); return !!(t && !t.classList.contains('tab-hidden'));",
+              "rateset": "return !!dlg.querySelector('tp-group.tpgroup-ratestatus');"}[tab]
+    driver.execute_script(_JS_DLG + "var t = dlg.querySelector('#tptablabel-tabs-%s'); if (t) t.click();" % tab)
+    if not _esperar(driver, lambda: driver.execute_script(_JS_DLG + espera), timeout=8):
+        raise FlujoError(f"No se abrió la pestaña {'Rates' if tab == 'rates' else 'Rate Set'} del período.")
+
+
+def _editar_rate_sets(driver, actuales, objetivos):
+    """Período con varios rate sets: en cada uno se pone la tarifa en 0 y se cambia el status con las mismas
+    reglas; se avanza con la flecha derecha del selector (se deshabilita en el último). No guarda: Save va una vez."""
+    n = len(actuales)
+    if _estado_rateset(driver)["izq"]:
+        raise FlujoError("El diálogo del período no abrió en su primer rate set.")
+    for i, (actual, objetivo) in enumerate(zip(actuales, objetivos)):
+        ultimo = i == n - 1
+        info = _estado_rateset(driver)
+        if bool(info["der"]) == ultimo:
+            raise FlujoError(f"La grilla indica {n} rate set(s) pero el selector "
+                             f"{'sigue' if ultimo else 'termina'} en el {i + 1}.")
+        if objetivo is not None:
+            print(f"      · rate set {i + 1}/{n} ({info['nombre'] or 's/n'}): {actual} → {objetivo}", flush=True)
+            _abrir_pestana(driver, "rates")
+            poner_tarifas_en_cero(driver)
+            _abrir_pestana(driver, "rateset")
+            elegir_status(driver, actual, objetivo)
+        if not ultimo:
+            driver.execute_script(_JS_DLG + "dlg.querySelector('#rate-set button.tpbutton-navright').click();")
+            if not _esperar(driver, lambda: _estado_rateset(driver)["nombre"] != info["nombre"], timeout=5):
+                print("      ⚠ el selector de rate sets no cambió de nombre: se sigue igual (el status se verifica)", flush=True)
+            time.sleep(0.5 * tp.VELOCIDAD)
+            tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+
+
 def editar_periodo(driver, cod_largo, ed):
     """Abre el período, verifica el título, pone la tarifa en 0, cambia el status y guarda.
     En Rates el diálogo se cierra solo al guardar."""
     p, nuevo = ed.periodo, ed.nuevo_status
     rp.verificar_no_es_intocable(p.pc)          # FX: nunca se pone la tarifa en 0 ni se cambia el status
-    actual = rp.normalizar_status(p.status)
-    rp.verificar_no_pasa_de_closed_a_manual(actual, nuevo)
+    actuales = rp.statuses_de(p.status)               # uno por rate set
+    objetivos = ed.por_set or (nuevo,)
+    if len(objetivos) != len(actuales):
+        raise rp.PlanRatesError(f"La edición trae {len(objetivos)} destino(s) y el período tiene {len(actuales)} rate set(s).")
+    for a, o in zip(actuales, objetivos):
+        if o is not None:
+            rp.verificar_no_pasa_de_closed_a_manual(a, o)
+    actual = actuales[0]
     _clic_fila(driver, p)
     try:
         verificar_titulo_periodo(driver, cod_largo, p)
-        poner_tarifas_en_cero(driver)
-        driver.execute_script(_JS_DLG + "var t = dlg.querySelector('#tptablabel-tabs-rateset'); if (t) t.click();")
-        if not _esperar(driver, lambda: driver.execute_script(
-                _JS_DLG + "return !!dlg.querySelector('tp-group.tpgroup-ratestatus');"), timeout=8):
-            raise FlujoError("No apareció la pestaña Rate Set.")
-        elegir_status(driver, actual, nuevo)
+        if len(actuales) > 1:
+            _editar_rate_sets(driver, actuales, objetivos)
+        else:
+            poner_tarifas_en_cero(driver)
+            driver.execute_script(_JS_DLG + "var t = dlg.querySelector('#tptablabel-tabs-rateset'); if (t) t.click();")
+            if not _esperar(driver, lambda: driver.execute_script(
+                    _JS_DLG + "return !!dlg.querySelector('tp-group.tpgroup-ratestatus');"), timeout=8):
+                raise FlujoError("No apareció la pestaña Rate Set.")
+            elegir_status(driver, actual, nuevo)
         if not _esperar(driver, lambda: driver.execute_script(
                 _JS_DLG + "var b = dlg.querySelector('tp-button.save button'); return !!(b && !b.disabled);"), timeout=10):
             raise FlujoError("El botón Save no se habilitó.")
@@ -624,7 +682,7 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
                 tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
                 continue
             candidato = next((p for p in periodos if (p.ini, p.fin) == (c.ini, c.fin)
-                              and rp.decidir_status(rp.normalizar_status(p.status), p.pc) is not None), None)
+                              and any(o is not None for o in rp.decidir_statuses(p.status, p.pc))), None)
             if candidato is None:
                 raise FlujoError(f"No encontré la fila del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} para cortarlo.")
             print(f"    → corte del período {c.ini:%d/%m/%Y}-{c.fin:%d/%m/%Y} en "

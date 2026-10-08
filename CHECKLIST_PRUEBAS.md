@@ -86,6 +86,13 @@ Objetivo: TR / ND / EM → **Manual**; el resto → **Closed**.
 - [ ] Período con tarifa en 0 ya puesta y status distinto: solo se corrige lo que falta.
 - [ ] Idempotencia: segunda corrida → todo `SALTEADO` («ya estaba todo cerrado»).
 
+### 4.2b Rate sets
+- [ ] Período con **2 rate sets** (status «A, B»): ambos pasan a su destino, tarifa en 0 en los dos, un solo Save.
+- [ ] Período con **3+ rate sets**; el selector llega al último y la flecha derecha queda deshabilitada.
+- [ ] Rate sets con status distintos («Confirmed, Manual»): solo se toca el que corresponde.
+- [ ] Período con rate sets ya cerrados en todos: se saltea.
+- [ ] Verificar a mano en Tourplan el status y la tarifa de **cada** rate set después de ejecutar.
+
 ### 4.3 Cortes (splits)
 - [ ] Fecha única dentro de un período → 1 corte (el día queda como período propio de 1 día).
 - [ ] Rango de fechas dentro de un período largo → 2 cortes encadenados en **una sola apertura**.

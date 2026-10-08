@@ -11,6 +11,12 @@
 - [x] Filtro «Date To» del diálogo de la allocation.
 - [x] Estado «NO APLICA» cuando ninguna allocation cierra tarifa.
 
+## Validar en Test: rate sets (código hecho, probado solo con un DOM simulado)
+- [ ] Período con 2 rate sets (p. ej. «Confirmed, Confirmed»): se cambian los dos y se guarda una vez.
+- [ ] Período con 3 o más rate sets y con rate sets en distinto status («Confirmed, Manual»).
+- [ ] Que el selector (`#rate-set`) cambie de nombre al avanzar (si no, el log avisa «el selector de rate sets no cambió de nombre»).
+- [ ] Que la tarifa quede en 0 en cada rate set (revisar a mano uno ya procesado).
+
 ## Pendiente: Producción
 - [ ] A la espera del cierre para probar en Producción. Primera corrida: un solo pedido chico, un hotel conocido,
   verificado a mano en Tourplan después (ver sección 7 de `CHECKLIST_PRUEBAS.md`).

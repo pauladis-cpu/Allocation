@@ -37,6 +37,7 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 - Status objetivo: Manual para TR, ND y EM; Closed para el resto.
 - Confirmed y **Provisional** pasan al objetivo. **Terminal** también pasa al objetivo (TR, ND y EM a Manual; el resto a Closed).
 - Closed se saltea y **nunca** pasa a Manual. Manual pasa a Closed salvo en TR, ND y EM.
+- **Rate sets:** si un período tiene varios (el status viene como «Confirmed, Confirmed»), cada rate set se procesa igual y por separado: tarifa en 0 y status con las mismas reglas, avanzando con la flecha derecha del selector, y se guarda una sola vez.
 - Al price code **FX nunca se le cambia la tarifa ni el status**. Su período sí puede cortarse (split):
   si comparte el período con otros price codes, el corte con «Split All Applicable Price Codes» lo corta también.
 - Se sigue frenando el pedido si el status de la grilla es ambiguo. El **Rate Name no influye**: no frena ni decide si se cierra.

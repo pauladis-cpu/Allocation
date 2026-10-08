@@ -3,7 +3,8 @@ Lógica pura, sin Selenium: recibe la grilla de períodos leída de Rates y los 
 fechas a cerrar, y devuelve qué cortes (splits) y qué ediciones hacen falta.
 
 Reglas:
-  - Una fila de la grilla es un par (período, price code).
+  - Una fila de la grilla es un par (período, price code). Si el período tiene varios rate sets, su status
+    viene separado por coma ("Confirmed, Manual"): cada rate set se decide con las mismas reglas, por separado.
   - Status objetivo: Manual para TR/ND/EM, Closed para el resto.
   - Closed -> se saltea. Manual -> se saltea si el objetivo es Manual, si no pasa a Closed.
     Confirmed y Provisional -> pasan al objetivo (TR/ND/EM a Manual, el resto a Closed).
@@ -48,7 +49,8 @@ class Corte:
 @dataclass(frozen=True)
 class Edicion:
     periodo: Periodo
-    nuevo_status: str
+    nuevo_status: str          # el primer cambio a hacer (con un solo rate set, el único)
+    por_set: tuple = ()        # un destino por rate set, en el orden de la grilla; None = ese rate set no se toca
 
 
 @dataclass
@@ -67,6 +69,12 @@ def normalizar_status(txt):
     if len(palabras) != 1 or None in conocidos:
         raise PlanRatesError(f"Status ambiguo o desconocido en la grilla: {txt!r}")
     return STATUS_CONOCIDOS[palabras[0].casefold()]
+
+
+def statuses_de(txt):
+    """Un status por rate set: 'Confirmed, Manual' -> ['Confirmed', 'Manual']. Un período sin rate sets
+    adicionales trae uno solo."""
+    return [normalizar_status(parte) for parte in (txt or "").split(",")]
 
 
 def status_objetivo(pc):
@@ -89,6 +97,11 @@ def decidir_status(actual, pc):
     if actual in (CONFIRMED, PROVISIONAL):
         return objetivo
     raise PlanRatesError(f"Status {actual!r} no contemplado (price code {pc}): se frena el pedido, revisar a mano.")
+
+
+def decidir_statuses(txt, pc):
+    """decidir_status para cada rate set del período: una tupla con el destino de cada uno (None = no se toca)."""
+    return tuple(decidir_status(s, pc) for s in statuses_de(txt))
 
 
 def verificar_no_es_intocable(pc):
@@ -121,7 +134,8 @@ def planear(periodos, rangos):
         if es_intocable(p.pc):
             plan.intocables.append(p)          # FX: no se evalúa ni se edita (puede cortarse junto con los demás)
             continue
-        nuevo = decidir_status(normalizar_status(p.status), p.pc)
+        objetivos = decidir_statuses(p.status, p.pc)        # uno por rate set: todos se procesan igual
+        nuevo = next((o for o in objetivos if o is not None), None)
         if nuevo is None:
             plan.ya_cerrados.append(p)
             continue
@@ -133,7 +147,7 @@ def planear(periodos, rangos):
             if hi < p.fin:
                 cortes.add(Corte(p.ini, p.fin, hi + timedelta(days=1))); hay_corte = True
         if not hay_corte:
-            por_editar.append(Edicion(p, nuevo))
+            por_editar.append(Edicion(p, nuevo, objetivos))
     plan.cortes = sorted(cortes, key=lambda c: (c.ini, c.fin, c.fecha))
     if not plan.cortes:
         plan.ediciones = por_editar

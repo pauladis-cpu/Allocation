@@ -421,3 +421,125 @@ def test_product_find_espera_si_la_pagina_viene_vacia_al_principio(monkeypatch):
         def execute_script(self, js, *a):
             return 1                                            # clic exacto resuelto
     assert rt.recorrer_product_find(Drv(), objetivo="IGRHT1INT01MEFV") is True
+
+
+# ── Períodos con varios rate sets ───────────────────────────────────────────
+
+HTML_RATESETS = r"""
+<html><body>
+<div id="grid"><table><thead><tr><th class="tpcol-RatePeriod">Rate Period</th></tr></thead><tbody id="tb">
+ <tr><td class="tpcol-rateperiod">22/May/2026 - 24/May/2026</td><td class="tpcol-pricecodecode">TR</td><td class="tpcol-ratestatuses">Confirmed, Confirmed</td><td class="tpcol-ratenames">1-1, 2-999</td></tr>
+ <tr><td class="tpcol-rateperiod">22/May/2026 - 24/May/2026</td><td class="tpcol-pricecodecode">RACK</td><td class="tpcol-ratestatuses">Confirmed, Manual</td><td class="tpcol-ratenames">1-1, 2-999</td></tr>
+ <tr><td class="tpcol-rateperiod">22/May/2026 - 24/May/2026</td><td class="tpcol-pricecodecode">ND</td><td class="tpcol-ratestatuses">Confirmed, Confirmed, Confirmed</td><td class="tpcol-ratenames">a, b, c</td></tr>
+</tbody></table></div>
+<script>
+  window.guardados = 0; window.ultimo = null;
+  document.getElementById('tb').addEventListener('click', e => {
+    const td = e.target.closest('td.tpcol-rateperiod'); if (!td) return;
+    const tr = td.parentElement, rango = td.textContent.trim().split(' - '), pc = tr.querySelector('.tpcol-pricecodecode').textContent.trim();
+    const nombres = tr.querySelector('.tpcol-ratenames').textContent.split(',').map(s => s.trim());
+    const sets = tr.querySelector('.tpcol-ratestatuses').textContent.split(',').map((s, i) => ({nombre: nombres[i], status: s.trim(), rates: ['100', '']}));
+    if (window.EXTRA) sets.push({nombre: 'extra', status: 'Confirmed', rates: ['100', '']});
+    let cur = 0;
+    const d = document.createElement('tp-dialog');
+    d.innerHTML = '<div class="tpmodal-productcosts"><h3>%(hab)s   ' + rango[0] + '/' + rango[1] + ' "' + pc + '"</h3>'
+      + '<div id="rate-set"><tp-button><button class="tpbutton tpbutton-navleft"></button></tp-button>'
+      + '<div class="tpcombo"><input readonly></div><tp-button><button class="tpbutton tpbutton-navright"></button></tp-button></div>'
+      + '<ul><li id="tptablabel-tabs-rates">Rates</li><li id="tptablabel-tabs-rateset">Rate Set</li></ul>'
+      + '<div id="tabs-rates" class="tptab"><div id="costs-panel"><table><tbody>'
+      + '<tr><td class="tpcol-cost"><input class="tpnumber-ratecostamount"></td><td class="tpcol-cost"><input></td></tr>'
+      + '<tr><td class="tpcol-cost"><input class="tpnumber-ratecostamount"></td><td class="tpcol-cost"><input></td></tr>'
+      + '</tbody></table></div></div><div id="tabs-rateset" class="tptab tab-hidden"><div id="rs"></div></div>'
+      + '<tp-button class="save"><button disabled>Save</button></tp-button><tp-button class="cancel"><button>Exit</button></tp-button></div>';
+    document.body.appendChild(d);
+    const save = d.querySelector('tp-button.save button'), izq = d.querySelector('.tpbutton-navleft'), der = d.querySelector('.tpbutton-navright');
+    const filas = Array.from(d.querySelectorAll('#costs-panel tbody tr'));
+    function pintar() {
+      d.querySelector('.tpcombo input').value = sets[cur].nombre;
+      izq.disabled = cur === 0; der.disabled = cur === sets.length - 1;
+      filas.forEach((f, i) => { const ins = f.querySelectorAll('input'); ins[0].value = i ? '' : sets[cur].rates[0]; ins[1].value = i ? '' : sets[cur].rates[0]; });
+      d.querySelector('#rs').innerHTML = '<tp-group class="tpgroup-ratestatus">' + ['Confirmed','Provisional','Terminal','Closed','Manual'].map((s, i) =>
+        '<tp-radio><label class="tpradio"><input type="button" id="st' + i + '" class="' + (s === sets[cur].status ? 'checked' : '') + '"></label></tp-radio><label for="st' + i + '">' + s + '</label>').join('') + '</tp-group>';
+      d.querySelectorAll('#rs input').forEach(r => r.addEventListener('click', () => {
+        d.querySelectorAll('#rs input').forEach(o => o.classList.remove('checked')); r.classList.add('checked');
+        sets[cur].status = d.querySelector('label[for="' + r.id + '"]').textContent; save.disabled = false; }));
+    }
+    pintar();
+    der.addEventListener('click', () => { cur++; setTimeout(pintar, 80); });          // Angular re-renderiza con retraso
+    izq.addEventListener('click', () => { cur--; setTimeout(pintar, 80); });
+    filas.forEach(f => f.querySelector('.tpnumber-ratecostamount').addEventListener('change', e => {
+      f.querySelectorAll('input').forEach(o => { o.value = e.target.value; }); sets[cur].rates[0] = filas[0].querySelector('input').value; save.disabled = false; }));
+    d.querySelector('#tptablabel-tabs-rates').addEventListener('click', () => { d.querySelector('#tabs-rates').classList.remove('tab-hidden'); d.querySelector('#tabs-rateset').classList.add('tab-hidden'); });
+    d.querySelector('#tptablabel-tabs-rateset').addEventListener('click', () => { d.querySelector('#tabs-rateset').classList.remove('tab-hidden'); d.querySelector('#tabs-rates').classList.add('tab-hidden'); });
+    save.addEventListener('click', () => { tr.querySelector('.tpcol-ratestatuses').textContent = sets.map(s => s.status).join(', ');
+      window.guardados++; window.ultimo = JSON.stringify(sets); d.remove(); });
+    d.querySelector('tp-button.cancel button').addEventListener('click', () => d.remove());
+  });
+</script></body></html>
+""" % {"hab": HAB}
+
+
+@pytest.fixture()
+def drv_sets():
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        pg = b.new_page()
+        pg.set_content(HTML_RATESETS)
+        yield Driver(pg)
+        b.close()
+
+
+RANGO_SETS = [(date(2026, 5, 22), date(2026, 5, 24))]
+
+
+def test_el_plan_decide_cada_rate_set_por_separado(drv_sets):
+    ps = rt.leer_periodos(drv_sets)
+    plan = rp.planear(ps, RANGO_SETS)
+    por_pc = {e.periodo.pc: e.por_set for e in plan.ediciones}
+    assert por_pc == {"TR": ("Manual", "Manual"), "RACK": ("Closed", "Closed"), "ND": ("Manual", "Manual", "Manual")}
+
+
+def test_editar_periodo_con_dos_rate_sets_cambia_los_dos_y_guarda_una_vez(drv_sets):
+    import json
+    tr = next(e for e in rp.planear(rt.leer_periodos(drv_sets), RANGO_SETS).ediciones if e.periodo.pc == "TR")
+    rt.editar_periodo(drv_sets, HAB, tr)
+    assert drv_sets.execute_script("return window.guardados;") == 1                     # un solo Save
+    sets = json.loads(drv_sets.execute_script("return window.ultimo;"))
+    assert [(s["status"], s["rates"][0]) for s in sets] == [("Manual", "0"), ("Manual", "0")]
+    assert next(p for p in rt.leer_periodos(drv_sets) if p.pc == "TR").status == "Manual, Manual"
+    assert drv_sets.find_elements(None, "body > tp-dialog") == []
+
+
+def test_con_tres_rate_sets_y_uno_ya_cerrado_solo_se_tocan_los_que_corresponden(drv_sets):
+    import json
+    drv_sets.execute_script("""const f = document.querySelectorAll('#tb tr')[1];     // RACK -> TR: 'Confirmed, Manual'
+        f.querySelector('.tpcol-pricecodecode').textContent = 'TR'; f.querySelector('.tpcol-ratenames').textContent = '7-7, 8-8';""")
+    e = next(e for e in rp.planear(rt.leer_periodos(drv_sets), RANGO_SETS).ediciones
+             if e.periodo.status == "Confirmed, Manual")
+    assert e.por_set == ("Manual", None)                                   # el 2.º ya es Manual: no se toca
+    rt.editar_periodo(drv_sets, HAB, e)
+    sets = json.loads(drv_sets.execute_script("return window.ultimo;"))
+    assert [(s["status"], s["rates"][0]) for s in sets] == [("Manual", "0"), ("Manual", "100")]    # la tarifa del 2.º no se tocó
+
+
+def test_tres_rate_sets_se_recorren_todos(drv_sets):
+    import json
+    nd = next(e for e in rp.planear(rt.leer_periodos(drv_sets), RANGO_SETS).ediciones if e.periodo.pc == "ND")
+    rt.editar_periodo(drv_sets, HAB, nd)
+    sets = json.loads(drv_sets.execute_script("return window.ultimo;"))
+    assert [(s["status"], s["rates"][0]) for s in sets] == [("Manual", "0")] * 3
+
+
+def test_si_el_selector_tiene_mas_rate_sets_que_la_grilla_no_guarda(drv_sets):
+    drv_sets.execute_script("window.EXTRA = true;")
+    tr = next(e for e in rp.planear(rt.leer_periodos(drv_sets), RANGO_SETS).ediciones if e.periodo.pc == "TR")
+    with pytest.raises(FlujoError, match="rate set"):
+        rt.editar_periodo(drv_sets, HAB, tr)
+    assert drv_sets.execute_script("return window.guardados;") == 0
+    assert drv_sets.find_elements(None, "body > tp-dialog") == []
+
+
+def test_destinos_distintos_a_la_cantidad_de_rate_sets_se_frenan(drv_sets):
+    tr = rt.leer_periodos(drv_sets)[0]
+    with pytest.raises(rp.PlanRatesError):
+        rt.editar_periodo(drv_sets, HAB, rp.Edicion(tr, "Manual", ("Manual",)))
