@@ -719,7 +719,9 @@ def _habitaciones_cola(p):
         return p["allocations"], []
     elegidas, faltan = registro.resolver_allocations(p["allocations"], del_hotel)
     if registro.normalizar(p["allocations"]) == "todas":
-        return f"Todas ({len(elegidas)})", elegidas
+        # en vez de «Todas (N)»: el código (product code) de la habitación de cada allocation; sin habitación, la allocation
+        codigos = list(dict.fromkeys(a.habitacion.strip() if not a.vacia else a.codigo for a in elegidas))
+        return ", ".join(codigos), elegidas
     nombres = [_habitacion_txt(a) if not a.vacia else a.codigo for a in elegidas] + faltan
     return ", ".join(nombres), elegidas
 
