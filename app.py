@@ -527,7 +527,7 @@ def render_fechas():
         checked_css = []
         with card("todas"):
             st.markdown("**Habitaciones a cerrar**")
-            st.checkbox(f"**Todas las habitaciones ({n_alloc})**", key="chk_todas",
+            st.checkbox(f"**Todas las habitaciones linkeadas ({n_alloc})**", key="chk_todas",
                         on_change=_on_todas, args=(n_alloc,))
             st.markdown(f'<div class="ayuda" style="margin-top:-.4rem">Las mismas fechas para '
                         f'{"las dos" if n_alloc == 2 else "todas"}. Se carga una sola vez.</div>',
@@ -626,7 +626,7 @@ def render_revisar():
         with card("resumen"):
             st.markdown('<div class="etiqueta-seccion">Resumen del pedido</div>', unsafe_allow_html=True)
             nombres = [_habitacion_txt(a) if not a.vacia else a.codigo for a in elegidas]
-            habs = (f"Todas ({len(elegidas)}): " + " y ".join(nombres)) if todas else ", ".join(nombres)
+            habs = ", ".join(_codigos_habitaciones(elegidas)) if todas else ", ".join(nombres)
             chips = "".join(
                 f'<span class="rango">{a:%d/%m} al {b:%d/%m}</span>' if a != b else f'<span class="rango">{a:%d/%m}</span>'
                 for a, b in rangos)
@@ -711,6 +711,11 @@ def _nombre_hotel(codigo):
     return codigo
 
 
+def _codigos_habitaciones(elegidas):
+    """Código (product code) de la habitación de cada allocation, sin repetir; sin habitación, el de la allocation."""
+    return list(dict.fromkeys(a.habitacion.strip() if not a.vacia else a.codigo for a in elegidas))
+
+
 def _habitaciones_cola(p):
     """Traduce los códigos de allocation de la COLA a la habitación (según ALLOCATIONS)."""
     del_hotel = [a for a in st.session_state.get("registro", {}).get("allocs", [])
@@ -720,8 +725,7 @@ def _habitaciones_cola(p):
     elegidas, faltan = registro.resolver_allocations(p["allocations"], del_hotel)
     if registro.normalizar(p["allocations"]) == "todas":
         # en vez de «Todas (N)»: el código (product code) de la habitación de cada allocation; sin habitación, la allocation
-        codigos = list(dict.fromkeys(a.habitacion.strip() if not a.vacia else a.codigo for a in elegidas))
-        return ", ".join(codigos), elegidas
+        return ", ".join(_codigos_habitaciones(elegidas)), elegidas
     nombres = [_habitacion_txt(a) if not a.vacia else a.codigo for a in elegidas] + faltan
     return ", ".join(nombres), elegidas
 
