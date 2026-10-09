@@ -200,7 +200,7 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
     if reales == 0:
-        return cola.ESTADO_SALTEADO, texto or "allocation vacía"
+        return cola.ESTADO_NO_APLICA, texto or "allocation vacía"
     if cerrar == 0 and sin_fila == 0:
         return cola.ESTADO_SALTEADO, "ya estaba todo cerrado · " + texto
     return cola.ESTADO_OK, texto

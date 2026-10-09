@@ -32,6 +32,8 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 - **aplicar**: toma el pedido (`EN CURSO` / `TOMADO_POR` / `TOMADO_EN`, con relectura para varias PCs),
   cierra las fechas en la allocation y después las tarifas, y deja `OK` / `SALTEADO` / `NO APLICA` / `ERROR: detalle`
   por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
+  `NO APLICA` = la fase no corresponde al pedido (allocation vacía, como Ibis Obelisco: nada que cerrar en allocation;
+  o ninguna allocation cierra tarifa). `SALTEADO` = correspondía pero ya estaba todo cerrado.
 
 **Reglas de tarifas (actualizan la especificación original):**
 - Status objetivo: Manual para TR, ND y EM; Closed para el resto.

@@ -260,3 +260,15 @@ def test_un_error_de_fase_deja_la_accion_sugerida_en_las_observaciones():
     runner.ejecutar_pedido(object(), ws, fila0, ALLOCS, HOY, aplicar=True)
     f = _fila(ws)
     assert f[cola.C_EST_ALLOT].startswith("ERROR") and "Qué hacer" in f[cola.C_OBS_ALLOT] and "PENDIENTE" in f[cola.C_OBS_TARIFA]
+
+
+def test_allocation_vacia_deja_la_fase_de_allocation_en_no_aplica(flujo, monkeypatch):
+    monkeypatch.setattr(fl, "cerrar_allocation", lambda *a, **k: (None, ""))     # allocation vacía: nada que cerrar ahí
+    ws = _ws()
+    fila0 = _fila(ws)
+    cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)
+    runner.ejecutar_pedido(object(), ws, fila0, ALLOCS, HOY, aplicar=True)
+    f = _fila(ws)
+    assert f[cola.C_EST_ALLOT] == "NO APLICA" and "allocation vacía" in f[cola.C_OBS_ALLOT]
+    assert f[cola.C_EST_TARIFA] == "OK"                                           # las tarifas se cierran igual
+    assert cola.estado_global(f) == "OK"
