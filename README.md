@@ -34,6 +34,8 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
   por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
   `NO APLICA` = la fase no corresponde al pedido (allocation vacía, como Ibis Obelisco: nada que cerrar en allocation;
   o ninguna allocation cierra tarifa). `SALTEADO` = correspondía pero ya estaba todo cerrado.
+  Una fecha **sin fila** en la allocation (salvo las posteriores a «Vigente hasta»), o **sin período** en Rates, es un
+  `ERROR` (no se pudo cerrar): una fecha que ya estaba cerrada, no.
 
 **Reglas de tarifas (actualizan la especificación original):**
 - Status objetivo: Manual para TR, ND y EM; Closed para el resto.

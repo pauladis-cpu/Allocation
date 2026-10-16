@@ -277,6 +277,8 @@ _SUGERENCIAS = (
     ("no es service type ht", "Solo se cierran habitaciones HT: corregí el código en el registro.", True),
     ("está excluida", "Nunca se cierran 600HTL ni ROOMS: corregí el código en el registro.", True),
     ("no encontré la habitación", "Verificá que el código exista en el Product Find del hotel en Tourplan.", True),
+    ("sin fila en la allocation", "Verificá en Tourplan que esas fechas existan en la allocation (Date To de la grilla de días) y, si falta la fila, crearla.", True),
+    ("sin período en rates", "Verificá en Rates que un período cubra esas fechas; si no existe, crealo.", True),
     ("fechas ilegibles", "Revisá la columna de fechas del pedido.", True),
     ("no quedan fechas vigentes", "Las fechas ya pasaron: no hay nada para reintentar.", False),
     ("login", "Revisá usuario y clave de Tourplan en Configuración.", True),

@@ -272,3 +272,48 @@ def test_allocation_vacia_deja_la_fase_de_allocation_en_no_aplica(flujo, monkeyp
     assert f[cola.C_EST_ALLOT] == "NO APLICA" and "allocation vacía" in f[cola.C_OBS_ALLOT]
     assert f[cola.C_EST_TARIFA] == "OK"                                           # las tarifas se cierran igual
     assert cola.estado_global(f) == "OK"
+
+
+def _correr(flujo, monkeypatch, plan_allocation=None, plan_tarifa=None, allocs=None):
+    if plan_allocation is not None:
+        monkeypatch.setattr(fl, "cerrar_allocation", lambda *a, **k: (plan_allocation, ""))
+    if plan_tarifa is not None:
+        monkeypatch.setattr(rt, "procesar_habitacion", lambda *a, **k: (plan_tarifa, "x: ok", 0))
+    ws = _ws()
+    fila0 = _fila(ws)
+    cola.tomar_pedido(ws, 2, "Ana", dormir=lambda s: None)
+    runner.ejecutar_pedido(object(), ws, fila0, allocs or ALLOCS, HOY, aplicar=True)
+    return _fila(ws)
+
+
+def test_fecha_sin_fila_en_la_allocation_es_un_error(flujo, monkeypatch):
+    d = date(2026, 10, 8)
+    f = _correr(flujo, monkeypatch, plan_allocation=plan.planear({}, [d]))
+    assert f[cola.C_EST_ALLOT].startswith("ERROR") and "sin fila en la allocation para 08/10/26" in f[cola.C_EST_ALLOT]
+    assert "Qué hacer" in f[cola.C_OBS_ALLOT]
+
+
+def test_fecha_ya_cerrada_no_es_un_error(flujo, monkeypatch):
+    d = date(2026, 10, 8)
+    f = _correr(flujo, monkeypatch, plan_allocation=plan.planear({d: DiaAllocation(d, 0, 0, 0)}, [d]))
+    assert f[cola.C_EST_ALLOT] == "SALTEADO"
+
+
+def test_fecha_sin_fila_posterior_a_la_vigencia_no_es_un_error(flujo, monkeypatch):
+    from dataclasses import replace
+    d = date(2026, 10, 8)
+    allocs = [replace(a, vigente_hasta=date(2026, 10, 1)) if a.codigo_hotel == "6RABA1" else a for a in ALLOCS]
+    f = _correr(flujo, monkeypatch, plan_allocation=plan.planear({}, [d]), allocs=allocs)
+    assert not f[cola.C_EST_ALLOT].startswith("ERROR")
+
+
+def test_fecha_sin_periodo_en_rates_es_un_error(flujo, monkeypatch):
+    d = date(2026, 10, 8)
+    f = _correr(flujo, monkeypatch, plan_tarifa=rates_plan.Plan(sin_periodo=[d]))
+    assert f[cola.C_EST_TARIFA].startswith("ERROR") and "sin período en Rates para 08/10/26" in f[cola.C_EST_TARIFA]
+    assert "Qué hacer" in f[cola.C_OBS_TARIFA]
+
+
+def test_periodos_ya_cerrados_en_rates_no_son_un_error(flujo, monkeypatch):
+    f = _correr(flujo, monkeypatch, plan_tarifa=rates_plan.Plan())
+    assert not f[cola.C_EST_TARIFA].startswith("ERROR")

@@ -196,6 +196,12 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
         sin_fila += sum(1 for x in acciones if x.tipo == plan.SIN_FILA)
         lineas.append(plan.resumen(a.codigo, acciones, lectura=not aplicar) + (f" ({obs})" if obs else ""))
         log(f"    ✔ {lineas[-1]}")
+        # Una fecha sin fila es un error (no se pudo cerrar), salvo las posteriores a «Vigente hasta»: ahí no se espera
+        # fila. Una fecha que ya estaba cerrada NO es un error.
+        faltan = [x.fecha for x in acciones if x.tipo == plan.SIN_FILA and (not a.vigente_hasta or x.fecha <= a.vigente_hasta)]
+        if faltan:
+            errores.append(f"{a.codigo}: sin fila en la allocation para {plan._rangos_txt(faltan)}")
+            log(f"    ✖ {errores[-1]}")
     texto = " | ".join(lineas)
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
@@ -317,7 +323,7 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
             log(f"    ℹ allocation HG: tarifas solo hasta la vigencia ({len(fechas_hab[h])} de {len(fechas)} fecha(s))")
         rangos = agrupar_rangos(fechas_hab[h])
         try:
-            _, texto, n = rt.procesar_habitacion(driver, codigo_hotel, h, rangos, aplicar=aplicar)
+            plan_hab, texto, n = rt.procesar_habitacion(driver, codigo_hotel, h, rangos, aplicar=aplicar)
         except (fl.FlujoError, rates_plan.PlanRatesError) as e:
             tp.ss(driver, f"error_{h}")
             errores.append(f"{h}: {e}")
@@ -326,6 +332,9 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         lineas.append(texto)
         log(f"    ✔ {texto}")
         trabajo += n
+        if plan_hab.sin_periodo:       # fecha que ningún período de Rates cubre: no se pudo cerrar = error
+            errores.append(f"{h}: sin período en Rates para {plan._rangos_txt(plan_hab.sin_periodo)}")
+            log(f"    ✖ {errores[-1]}")
     texto = " | ".join(lineas)
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
