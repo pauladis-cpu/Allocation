@@ -311,6 +311,7 @@ def leer_dias(driver, fechas):
     si no está, recorre de a pasos. Devuelve {date: DiaAllocation} (solo las que existen)."""
     verificar_columnas_dias(driver)
     cache, ilegibles = {}, set()
+    fin_cargado = None
 
     def scroll(px):
         driver.execute_script(_JS_DLG + """
@@ -351,6 +352,7 @@ def leer_dias(driver, fechas):
     scroll(0)
     r, visibles = absorber()
     if not visibles:
+        print("    ⚠ la grilla de días no tiene filas renderizadas: ninguna fecha se puede leer.", flush=True)
         return {}
     base = min(visibles)  # primera fila = "Fecha desde" (hoy); días consecutivos, 35 px cada uno
 
@@ -367,6 +369,7 @@ def leer_dias(driver, fechas):
                 break
             if f > max(visibles):
                 if r["top"] + r["alto"] >= r["total"] - 2:
+                    fin_cargado = max(visibles)
                     break  # llegó al final de lo cargado: la fecha no tiene fila
                 scroll(r["top"] + int(r["alto"] * 0.8))
             elif f < min(visibles):
@@ -375,6 +378,8 @@ def leer_dias(driver, fechas):
                 scroll(r["top"] - int(r["alto"] * 0.8))
             else:
                 break  # está dentro del rango visible pero sin fila
+    if fin_cargado:
+        print(f"    ⚠ la grilla de días llega hasta {fin_cargado:%d/%m/%Y}: las fechas posteriores no tienen fila.", flush=True)
     bad = sorted(f for f in set(fechas) if f in ilegibles)
     if bad:
         raise FlujoError("No pude leer Used/Max/Release de: " + ", ".join(f"{f:%d/%m/%Y}" for f in bad))
@@ -443,10 +448,8 @@ def filtrar_dias_hasta(driver, hasta, hoy=None):
         tope = hoy.replace(year=hoy.year + WINDOW_YEARS, day=28)
     hasta = min(hasta, tope)
     print(f"    → ampliando 'Date To' de la grilla de días hasta {hasta:%d/%m/%Y}", flush=True)
-    actual = driver.execute_script(_JS_DLG + """
-        var h = dlg.querySelector('#days-tab tp-date#dateto input.tphidden'); return h ? h.value : null;""")
-    if actual is not None and _fecha_tp(actual) is not None and _fecha_tp(actual) >= hasta:
-        return
+    # OJO: el input oculto de Date To NO es confiable para decidir si hace falta filtrar (en Tourplan real puede
+    # traer una fecha lejana mientras la grilla sigue mostrando ~1 mes): siempre se escribe Date To y se filtra.
     inp = driver.execute_script(_JS_DLG + "return dlg.querySelector('#days-tab input.tpdate-dateto');")
     if inp is None:
         raise FlujoError("No encontré el filtro 'Date To' de la grilla de días.")
@@ -462,6 +465,27 @@ def filtrar_dias_hasta(driver, hasta, hoy=None):
         raise FlujoError("No encontré el botón Filter de la grilla de días.")
     time.sleep(1.5 * tp.VELOCIDAD)
     tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
+    # La grilla recarga con retraso: se espera a que llegue hasta la fecha pedida. Si la allocation termina antes,
+    # se avisa hasta dónde llega (las fechas posteriores se informarán como sin fila).
+    if not _esperar(driver, lambda: (_ultima_fecha_cargada(driver) or date.min) >= hasta, timeout=6):
+        ultima = _ultima_fecha_cargada(driver)
+        print(f"    ⚠ la grilla de días llega hasta {ultima:%d/%m/%Y}" if ultima else
+              "    ⚠ la grilla de días no trajo filas tras filtrar", end="", flush=True)
+        print(f" (se pidió hasta {hasta:%d/%m/%Y}): las fechas posteriores se informan como sin fila.", flush=True)
+
+
+def _ultima_fecha_cargada(driver):
+    """Fecha de la última fila de la grilla de días (baja al final del scroll, lee y vuelve al principio)."""
+    mover = _JS_DLG + """
+        var vp = dlg.querySelector('#days-tab cdk-virtual-scroll-viewport'); if (vp) vp.scrollTop = arguments[0] ? vp.scrollHeight : 0;"""
+    driver.execute_script(mover, True)
+    time.sleep(0.6 * tp.VELOCIDAD)
+    etiquetas = driver.execute_script(_JS_DLG + """
+        var vp = dlg.querySelector('#days-tab cdk-virtual-scroll-viewport'); if (!vp) return [];
+        return Array.from(vp.querySelectorAll('div.tpbodyrow .datecol.date label')).map(function(l){ return l.textContent.trim(); });""")
+    driver.execute_script(mover, False)
+    fechas = [f for f in (_fecha_tp(e) for e in etiquetas or []) if f is not None]
+    return max(fechas) if fechas else None
 
 
 # ── Escritura (ETAPA 3: solo se usa en modo aplicar) ────────────────────────

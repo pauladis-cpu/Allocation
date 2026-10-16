@@ -289,3 +289,29 @@ def test_abrir_supplier_reintenta_si_un_dialog_tapa_el_campo(monkeypatch):
     with pytest.raises(Parado):
         fl.abrir_supplier(Drv(), "1INT01")
     assert Campo.clics == 3
+
+
+@pytest.fixture()
+def drv_fresco(drv):
+    """La misma página del módulo, pero recargada: otras pruebas cambian su estado (p. ej. cierran el diálogo)."""
+    drv.page.goto("about:blank")
+    drv.page.set_content(HTML)
+    return drv
+
+
+def test_date_to_se_amplia_aunque_el_input_oculto_diga_una_fecha_lejana(drv_fresco):
+    """En Tourplan real el hidden de Date To puede traer una fecha lejana mientras la grilla muestra ~1 mes:
+    no se puede usar para saltear el filtro."""
+    drv = drv_fresco
+    drv.page.evaluate("() => { document.getElementById('hdn').value = '05/Nov/2029'; }")
+    f = BASE + timedelta(days=60)
+    assert fl.leer_dias(drv, [f]) == {}                                  # sin ampliar: la grilla no llega
+    fl.filtrar_dias_hasta(drv, f, hoy=BASE)
+    assert f in fl.leer_dias(drv, [f])
+
+
+def test_ultima_fecha_cargada(drv_fresco):
+    drv = drv_fresco
+    assert fl._ultima_fecha_cargada(drv) == BASE + timedelta(days=31)    # ~1 mes hasta que se amplía
+    fl.filtrar_dias_hasta(drv, BASE + timedelta(days=100), hoy=BASE)
+    assert fl._ultima_fecha_cargada(drv) == BASE + timedelta(days=100)
