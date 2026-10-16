@@ -15,13 +15,14 @@ La configuración (credenciales de Tourplan, URL del Sheet, entorno) se guarda p
 PC en ~/.tourplan-allocation (ver common/user_config.py).
 """
 import html
+import json
 import os
+import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -37,6 +38,11 @@ from common import user_config
 from common.sheets_client import conectar_sheets
 
 REPO_ROOT = Path(__file__).resolve().parent
+
+# Cada corrida del runner tiene su carpeta (corrida.log, estado.json, screenshots/) en LOGS_DIR; alimenta el Historial.
+LOGS_DIR = Path(user_config.CONFIG_DIR) / "logs"
+GUARDAR_CORRIDAS = 30
+LATIDO_MAX = 20      # segundos sin latido de estado.json: el proceso se considera muerto
 
 _calendario = components.declare_component(
     "calendario_fechas", path=str(REPO_ROOT / "components" / "calendario"))
@@ -305,6 +311,7 @@ def dialogo_configuracion():
         with c2:
             tp_password = st.text_input("Password Tourplan", value=cfg["tp_password"], type="password")
         headless = st.checkbox("Correr Chrome sin ventana visible (headless)", value=bool(cfg["headless"]))
+        sonido = st.checkbox("Avisar con un sonido cuando termine la corrida (solo Windows)", value=bool(cfg["sonido"]))
         prod_ok = st.checkbox(
             "Autorizo escribir en Producción (solo cuenta si el entorno elegido es Producción)",
             value=bool(cfg["produccion_confirmada"]),
@@ -315,7 +322,7 @@ def dialogo_configuracion():
             user_config.guardar({
                 "nombre": nombre, "sheet_url": sheet_url, "entorno": entorno,
                 "tp_usuario": tp_usuario, "tp_password": tp_password,
-                "headless": headless, "minutos_abandono": int(minutos),
+                "headless": headless, "sonido": bool(sonido), "minutos_abandono": int(minutos),
                 "produccion_confirmada": bool(prod_ok)})
             st.rerun()
     ruta = Path(user_config.CREDENTIALS_PATH)
@@ -329,7 +336,7 @@ def render_topbar():
     cfg = user_config.cargar()
     vista = st.session_state["vista"]
     with st.container(key="topbar"):
-        c_tit, c_nuevo, c_cola, c_esp, c_env, c_user = st.columns([2.3, 1.3, 0.8, 5, 1.1, 2.2])
+        c_tit, c_nuevo, c_cola, c_hist, c_esp, c_env, c_user = st.columns([2.3, 1.3, 0.8, 1.0, 4, 1.1, 2.2])
         c_tit.markdown('<span class="titulo">Cierre de allotment</span>', unsafe_allow_html=True)
         c_nuevo.button("Nuevo pedido", key="tab_nuevo", use_container_width=True,
                        type="primary" if vista == "nuevo" else "tertiary",
@@ -337,6 +344,9 @@ def render_topbar():
         c_cola.button("Cola", key="tab_cola", use_container_width=True,
                       type="primary" if vista == "cola" else "tertiary",
                       on_click=_set_vista, args=("cola",))
+        c_hist.button("Historial", key="tab_historial", use_container_width=True,
+                      type="primary" if vista == "historial" else "tertiary",
+                      on_click=_set_vista, args=("historial",))
         prod = cfg["entorno"] == "produccion"
         c_env.markdown(f'<span class="entorno{" prod" if prod else ""}">{"PRODUCCIÓN" if prod else "TEST"}</span>',
                        unsafe_allow_html=True)
@@ -851,8 +861,9 @@ def lanzar_runner(solo_pedido=None):
     cfg = user_config.cargar()
     state = _estado_ejecucion()
     base_url = URLS_ENTORNO[cfg["entorno"]]
-    run_dir = Path(tempfile.mkdtemp(prefix="allocation_"))
-    (run_dir / "screenshots").mkdir()
+    run_dir = LOGS_DIR / datetime.now().strftime("%Y%m%d_%H%M%S")
+    (run_dir / "screenshots").mkdir(parents=True)
+    _escribir_json(run_dir / "estado.json", {"inicio": time.time(), "usuario": cfg["nombre"], "entorno": cfg["entorno"]})
     stop_file = run_dir / "ABORTAR.flag"
     env = os.environ.copy()
     env.update({
@@ -864,6 +875,7 @@ def lanzar_runner(solo_pedido=None):
         "TOURPLAN_VELOCIDAD": "1.5" if base_url == URL_PRODUCCION else "1.0",
         "TOURPLAN_SS_DIR": str(run_dir / "screenshots"), "TOURPLAN_STOP_FILE": str(stop_file),
         "TOURPLAN_QUIEN": cfg["nombre"],
+        "TOURPLAN_RUN_DIR": str(run_dir), "TOURPLAN_SONIDO": "1" if cfg["sonido"] else "0",
         "TOURPLAN_PERMITIR_PRODUCCION": "1" if (base_url == URL_PRODUCCION and cfg["produccion_confirmada"]) else "0",
         "TOURPLAN_SOLO_PEDIDO": solo_pedido or "",
         "PYTHONPATH": str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", ""),
@@ -874,7 +886,7 @@ def lanzar_runner(solo_pedido=None):
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
         errors="replace", bufsize=1)
     state.update({"running": True, "finished": False, "log_lines": [], "returncode": None,
-                  "proc": proc, "stop_file": stop_file, "abort_requested": False})
+                  "proc": proc, "stop_file": stop_file, "abort_requested": False, "run_dir": run_dir})
     threading.Thread(target=_leer_proceso, args=(proc, state), daemon=True).start()
 
 
@@ -895,6 +907,8 @@ def render_ejecucion():
                 pass
         if state["abort_requested"]:
             st.warning("⏸️ Abortando: termina el paso en curso, hace logout y corta.")
+    if state["running"]:
+        _render_espera_licencia(state.get("run_dir"))
     if state["log_lines"]:
         st.code("".join(state["log_lines"][-300:]), language=None)
     if state["running"] and state["finished"]:
@@ -905,11 +919,130 @@ def render_ejecucion():
             st.success("Terminó OK. La cola se actualizó: mirá los estados y las observaciones.")
         elif rc == ABORT_EXIT_CODE:
             st.info("⏸️ Abortado. Lo que quedó sin procesar sigue PENDIENTE.")
+        elif rc == LICENCIAS_EXIT_CODE:
+            st.error("Licencias agotadas: Tourplan no tuvo licencias libres tras los reintentos. No se procesó nada: "
+                     "los pedidos siguen PENDIENTE; volvé a ejecutarlos más tarde.")
         else:
             st.error(f"El proceso terminó con error (código {rc}). Revisá el log.")
     if state["running"]:
         time.sleep(1)
         st.rerun()
+
+
+# ── Estado de las corridas (estado.json) e Historial ──────────────────────
+
+LICENCIAS_EXIT_CODE = 76     # igual que runner.LICENCIAS_EXIT_CODE (el runner importa selenium: la app no lo importa)
+
+
+def _escribir_json(ruta, datos):
+    try:
+        Path(ruta).write_text(json.dumps(datos), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _leer_json(ruta):
+    try:
+        return json.loads(Path(ruta).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _corridas_en_disco():
+    """Carpetas de corrida, de la más reciente a la más vieja."""
+    if not LOGS_DIR.is_dir():
+        return []
+    return sorted((d for d in LOGS_DIR.iterdir() if d.is_dir() and (d / "estado.json").exists()),
+                  key=lambda d: d.name, reverse=True)
+
+
+def _en_curso(estado):
+    return not estado.get("finalizada") and time.time() - estado.get("latido", estado.get("inicio", 0)) < LATIDO_MAX
+
+
+def _limpiar_corridas_viejas():
+    """Se conservan las últimas GUARDAR_CORRIDAS corridas (las que siguen en curso no se tocan)."""
+    for i, run_dir in enumerate(_corridas_en_disco()):
+        if i >= GUARDAR_CORRIDAS and not _en_curso(_leer_json(run_dir / "estado.json") or {}):
+            shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def _etiqueta_estado(estado):
+    if estado.get("finalizada"):
+        if estado.get("estado_final") == "ok":
+            return "Con errores" if (estado.get("resumen") or {}).get("error") else "OK"
+        return {"abortada": "Abortada", "sin_licencias": "Licencias agotadas"}.get(estado.get("estado_final"), "Error")
+    return "En curso" if _en_curso(estado) else "Interrumpida"
+
+
+def _duracion(segundos):
+    m, s = divmod(int(max(0, segundos)), 60)
+    return f"{m} min {s:02d} s" if m else f"{s} s"
+
+
+def _render_espera_licencia(run_dir):
+    """Cartel con cuenta regresiva mientras el runner espera una licencia de Tourplan para reintentar el login."""
+    espera = (_leer_json(Path(run_dir) / "estado.json") or {}).get("espera_licencia") if run_dir else None
+    if not espera:
+        return
+    m, s = divmod(max(0, int(espera["hasta"] - time.time())), 60)
+    st.warning(f"⏳ **Licencias agotadas** — Tourplan no tiene licencias libres. Reintento {espera['intento']}/{espera['max']} "
+               f"en **{m}:{s:02d}**. Si no querés esperar, podés abortar.")
+
+
+@st.dialog("Log de la corrida", width="large")
+def _dialogo_log(nombre, inicio_txt):
+    run_dir = LOGS_DIR / nombre
+    st.caption(f"Corrida del {inicio_txt}")
+    try:
+        texto = (run_dir / "corrida.log").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        texto = ""
+    st.download_button("Descargar log", data=texto, file_name=f"log_allocation_{nombre}.txt", mime="text/plain",
+                       key=f"descargar_{nombre}")
+    with st.container(height=420):
+        st.code("\n".join(texto.splitlines()[-1000:]) or "Sin salida registrada.", language=None, wrap_lines=True)
+    capturas = sorted((run_dir / "screenshots").glob("*.png")) if (run_dir / "screenshots").is_dir() else []
+    st.markdown("**Capturas de errores**")
+    if not capturas:
+        st.caption("Esta corrida no tuvo errores con captura de pantalla.")
+    for col, png in zip(st.columns(3) * len(capturas), capturas):
+        col.image(str(png), caption=png.stem)
+
+
+def render_historial():
+    st.markdown('<div style="font-size:1.7rem;font-weight:600">Historial de corridas</div>'
+                f'<div class="ayuda">Se conservan las últimas {GUARDAR_CORRIDAS} corridas de esta PC. '
+                'El ícono de la última columna abre el log y las capturas de los errores.</div>', unsafe_allow_html=True)
+    filas = []
+    for run_dir in _corridas_en_disco():
+        estado = _leer_json(run_dir / "estado.json") or {}
+        inicio = estado.get("inicio", 0)
+        fin = estado.get("fin") or estado.get("latido", inicio)
+        r = estado.get("resumen") or {}
+        filas.append((run_dir.name, time.strftime("%d/%m/%Y %H:%M", time.localtime(inicio)), [
+            _duracion(fin - inicio), _etiqueta_estado(estado), str(r.get("pedidos", "—")), str(r.get("ok", "—")),
+            str(r.get("error", "—")), str(r.get("omitidos", "—")), estado.get("usuario", ""),
+            estado.get("entorno", "")]))
+    if not filas:
+        st.caption("Todavía no hay corridas registradas.")
+        return
+    anchos = [2.2, 1.5, 2.2, 1, 0.8, 0.8, 1.1, 1.4, 1.4, 0.7]
+    titulos = ["Inicio", "Duración", "Estado", "Pedidos", "OK", "Error", "Salteadas", "Usuario", "Entorno", "Log"]
+    for col, titulo in zip(st.columns(anchos), titulos):
+        col.caption(titulo)
+    abrir = None
+    for nombre, inicio_txt, valores in filas:
+        columnas = st.columns(anchos, vertical_alignment="center")
+        for col, texto in zip(columnas, [inicio_txt] + valores):
+            col.markdown(f"<span style='font-size:0.85rem'>{html.escape(str(texto))}</span>", unsafe_allow_html=True)
+        if columnas[-1].button(":material/description:", key=f"log_{nombre}", help="Ver el log de esta corrida"):
+            abrir = (nombre, inicio_txt)
+    if abrir:
+        _dialogo_log(*abrir)
+    st.markdown('<div class="ayuda" style="margin-top:.6rem">OK / Error / Salteadas cuentan fases (allocation y tarifa) de '
+                'los pedidos en modo aplicar. «Salteadas» incluye las SALTEADO y las NO APLICA.</div>',
+                unsafe_allow_html=True)
 
 
 # ── Programa principal ────────────────────────────────────────────────────
@@ -918,6 +1051,9 @@ def main():
     st.set_page_config(page_title="Cierre de allotment — Tourplan NX", layout="wide",
                        initial_sidebar_state="collapsed")
     _inyectar_css()
+    if "_logs_limpiados" not in st.session_state:
+        st.session_state["_logs_limpiados"] = True
+        _limpiar_corridas_viejas()
     st.session_state.setdefault("vista", "nuevo")
     st.session_state.setdefault("paso", 1)
     # mantiene vivo el estado de los widgets que no se dibujan en el paso actual
@@ -928,6 +1064,8 @@ def main():
     with st.container(key="page"):
         if st.session_state["vista"] == "cola":
             render_cola()
+        elif st.session_state["vista"] == "historial":
+            render_historial()
         else:
             if st.session_state.get("aviso"):
                 st.success(st.session_state.pop("aviso"))

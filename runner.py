@@ -18,12 +18,21 @@ Variables de entorno opcionales:
   TOURPLAN_QUIEN        nombre que se escribe en TOMADO_POR.
   TOURPLAN_MODO=lectura fuerza lectura para todas las filas.
   TOURPLAN_LOG_DIR      carpeta donde se guarda el log de cada ejecución (por defecto ~/.tourplan-allocation/logs).
+  TOURPLAN_RUN_DIR      carpeta de esta corrida (la crea la app): corrida.log, estado.json (resumen, estado final, espera por
+                        licencias) y screenshots/. Sin ella, el log va a TOURPLAN_LOG_DIR como ejecucion_*.log.
+  TOURPLAN_SONIDO=1     avisa con un sonido al terminar la corrida (solo Windows).
 
 Cada línea del log (pantalla y archivo) lleva la hora [HH:MM:SS]; se conservan los últimos LOGS_A_CONSERVAR archivos.
+
+Login: si Tourplan no tiene licencias libres («Maximum Users Exceeded») se cierra Chrome, se espera
+LICENCIAS_ESPERA_MIN minutos y se reintenta, hasta LICENCIAS_MAX_INTENTOS intentos. Si se agotan, no se procesa nada
+(los pedidos siguen PENDIENTE) y sale con LICENCIAS_EXIT_CODE.
 """
+import json
 import os
 import re
 import sys
+import threading
 import time
 import traceback
 from datetime import date, datetime
@@ -34,7 +43,7 @@ from allocation.constantes import (
     URL_PRODUCCION,
 )
 from allocation.fechas import agrupar_rangos, de_texto_normalizado
-from common.abort import ABORT_EXIT_CODE, AbortadoPorUsuario, chequear_abort
+from common.abort import ABORT_EXIT_CODE, AbortadoPorUsuario, abort_solicitado, chequear_abort
 from common.sheets_client import actualizar_fila_sheet, cargar_sheet, conectar_sheets
 
 SHEET_URL = os.environ.get("TOURPLAN_SHEET_URL", "")
@@ -50,6 +59,15 @@ ALLOT, TARIFA = "allotment", "tarifa"
 LOG_DIR = os.environ.get("TOURPLAN_LOG_DIR", "").strip() or os.path.join(
     os.path.expanduser("~"), ".tourplan-allocation", "logs")
 LOGS_A_CONSERVAR = 30
+
+RUN_DIR = os.environ.get("TOURPLAN_RUN_DIR", "").strip()
+SONIDO = os.environ.get("TOURPLAN_SONIDO", "") == "1"
+
+LICENCIAS_ESPERA_MIN = 5        # minutos entre un intento de login y el siguiente
+LICENCIAS_MAX_INTENTOS = 3      # intentos de login en total (el primero incluido)
+LICENCIAS_EXIT_CODE = 76
+ESTADO_FINAL_POR_CODIGO = {0: "ok", ABORT_EXIT_CODE: "abortada", LICENCIAS_EXIT_CODE: "sin_licencias"}
+LATIDO_CADA = 5                 # segundos entre "latidos" de estado.json (la app los usa para saber si sigue vivo)
 
 
 class _LogConHora:
@@ -100,15 +118,20 @@ def activar_log_a_archivo(ahora=None, directorio=None):
     directorio = directorio or LOG_DIR
     ahora = ahora or datetime.now()
     try:
-        os.makedirs(directorio, exist_ok=True)
-        ruta = os.path.join(directorio, f"ejecucion_{ahora:%Y%m%d_%H%M%S}.log")
-        archivo = open(ruta, "w", encoding="utf-8")
-        viejos = sorted(f for f in os.listdir(directorio) if f.startswith("ejecucion_") and f.endswith(".log"))
-        for f in viejos[:-LOGS_A_CONSERVAR]:
-            try:
-                os.remove(os.path.join(directorio, f))
-            except OSError:
-                pass
+        if RUN_DIR:             # corrida lanzada por la app: carpeta propia (la app limpia las corridas viejas)
+            os.makedirs(RUN_DIR, exist_ok=True)
+            ruta = os.path.join(RUN_DIR, "corrida.log")
+            archivo = open(ruta, "w", encoding="utf-8")
+        else:
+            os.makedirs(directorio, exist_ok=True)
+            ruta = os.path.join(directorio, f"ejecucion_{ahora:%Y%m%d_%H%M%S}.log")
+            archivo = open(ruta, "w", encoding="utf-8")
+            viejos = sorted(f for f in os.listdir(directorio) if f.startswith("ejecucion_") and f.endswith(".log"))
+            for f in viejos[:-LOGS_A_CONSERVAR]:
+                try:
+                    os.remove(os.path.join(directorio, f))
+                except OSError:
+                    pass
     except OSError:
         return None, None
     tee = _LogConHora(sys.stdout, archivo)
@@ -119,6 +142,135 @@ def activar_log_a_archivo(ahora=None, directorio=None):
 
 def log(msg):
     print(msg, flush=True)
+
+
+# ── Estado de la corrida (estado.json, para el historial y el cartel de espera de la app) ──
+
+RESUMEN = {"pedidos": 0, "ok": 0, "error": 0, "omitidos": 0}     # fases cerradas con resultado (OK / ERROR / SALTEADO·NO APLICA)
+_estado = {}
+_estado_lock = threading.Lock()
+
+
+def contar_fase(estado):
+    """Suma al resumen de la corrida el resultado de una fase (en lectura el estado viene vacío: no cuenta)."""
+    if not estado:
+        return
+    if estado.startswith(cola.ESTADO_ERROR):
+        RESUMEN["error"] += 1
+    elif estado == cola.ESTADO_OK:
+        RESUMEN["ok"] += 1
+    else:
+        RESUMEN["omitidos"] += 1
+
+
+def guardar_estado(**cambios):
+    """Actualiza estado.json (escritura atómica) y refresca el latido. Sin TOURPLAN_RUN_DIR no hace nada."""
+    if not RUN_DIR:
+        return
+    with _estado_lock:
+        _estado.update(cambios)
+        _estado["latido"] = time.time()
+        ruta = os.path.join(RUN_DIR, "estado.json")
+        tmp = ruta + ".tmp"
+        for _ in range(15):     # en Windows os.replace falla si la app justo está leyendo el archivo
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(_estado, f, default=str)
+                os.replace(tmp, ruta)
+                break
+            except OSError:
+                time.sleep(0.2)
+
+
+def _latido():
+    while True:
+        time.sleep(LATIDO_CADA)
+        guardar_estado()
+
+
+def iniciar_estado():
+    """Toma lo que dejó la app (inicio, usuario, entorno) y arranca el latido."""
+    if not RUN_DIR:
+        return
+    try:
+        with open(os.path.join(RUN_DIR, "estado.json"), encoding="utf-8") as f:
+            _estado.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    _estado.setdefault("inicio", time.time())
+    guardar_estado(pid=os.getpid(), finalizada=False, resumen=dict(RESUMEN))
+    threading.Thread(target=_latido, daemon=True).start()
+
+
+def finalizar_estado(rc):
+    guardar_estado(finalizada=True, fin=time.time(), returncode=rc, resumen=dict(RESUMEN),
+                   estado_final=ESTADO_FINAL_POR_CODIGO.get(rc, "error"))
+
+
+def sonar_fin(rc):
+    """Aviso sonoro al terminar (solo Windows; en otros sistemas no hace nada). Dos tonos ascendentes = terminó sin
+    errores; tres graves repetidos = hubo errores o falló algo; un beep corto = se abortó."""
+    try:
+        import winsound
+        if rc == ABORT_EXIT_CODE:
+            tonos = [(880, 250)]
+        elif rc == 0 and not RESUMEN["error"]:
+            tonos = [(784, 200), (1175, 400)]
+        else:
+            tonos = [(440, 300), (440, 300), (330, 600)] * 2
+        for frecuencia, ms in tonos:
+            winsound.Beep(frecuencia, ms)
+    except Exception:
+        pass        # sin placa de sonido o sin winsound: no debe afectar el resultado
+
+
+# ── Login con reintento por licencias ───────────────────────────────────────
+
+def _esperar_cancelable(segundos):
+    """Espera `segundos`; devuelve False si el usuario pidió abortar durante la espera."""
+    fin = time.time() + segundos
+    while time.time() < fin:
+        if abort_solicitado():
+            return False
+        time.sleep(min(1, max(0, fin - time.time())))
+    return True
+
+
+def _cerrar_driver(driver):
+    try:
+        driver.quit()
+    except Exception:
+        pass
+
+
+def login_con_reintentos(tp):
+    """Abre Chrome y hace login. Si Tourplan no tiene licencias libres, cierra el navegador, espera
+    LICENCIAS_ESPERA_MIN minutos (cancelable) y reintenta, hasta LICENCIAS_MAX_INTENTOS intentos en total (un login
+    fallido no toma licencia). Devuelve el driver con sesión iniciada, o None si se pidió abortar antes de lograrlo.
+    Levanta LicenciasAgotadasError si se agotan los intentos; cualquier otro error de login se propaga sin reintentar."""
+    for intento in range(1, LICENCIAS_MAX_INTENTOS + 1):
+        if abort_solicitado():
+            return None
+        driver = tp.crear_driver()
+        try:
+            tp.login(driver)
+            return driver
+        except tp.LicenciasAgotadasError:
+            _cerrar_driver(driver)
+            if intento >= LICENCIAS_MAX_INTENTOS:
+                raise tp.LicenciasAgotadasError(f"Licencias agotadas tras {intento} intentos "
+                                                f"(esperando {LICENCIAS_ESPERA_MIN:g} min entre cada uno)")
+            log(f"⏳ Licencias agotadas, reintento {intento + 1}/{LICENCIAS_MAX_INTENTOS} en {LICENCIAS_ESPERA_MIN:g} min...")
+            guardar_estado(espera_licencia={"intento": intento + 1, "max": LICENCIAS_MAX_INTENTOS,
+                                            "hasta": time.time() + LICENCIAS_ESPERA_MIN * 60})
+            espera_completa = _esperar_cancelable(LICENCIAS_ESPERA_MIN * 60)
+            guardar_estado(espera_licencia=None)
+            if not espera_completa:
+                log("⏹ Abort solicitado durante la espera de licencia.")
+                return None
+        except BaseException:
+            _cerrar_driver(driver)
+            raise
 
 
 class PedidoError(Exception):
@@ -360,6 +512,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
             obs = f"{obs} ▸ {accion}" if obs else accion
         log(f"  ■ Fase {fase}: {estado or '(lectura: solo observaciones)'}"
             + (f" — {obs[:500]}" if obs else ""))
+        contar_fase(estado)
         if aplicar:
             cola.escribir_fase(ws, row, fase, estado, obs)
             en_curso.discard(fase)
@@ -400,6 +553,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
         log(f"  ✖ error inesperado: {e}")
         traceback.print_exc()
         for f in sorted(en_curso):
+            contar_fase(cola.formato_error(str(e)))
             cola.escribir_fase(ws, row, f, cola.formato_error(str(e)), "")
         if not aplicar:
             for f in fases:
@@ -457,10 +611,16 @@ def main():
         return
 
     t0 = time.time()
-    driver = tp.crear_driver()
+    try:
+        driver = login_con_reintentos(tp)
+    except tp.LicenciasAgotadasError as e:
+        print(f"\n⛔ {e}\nNo se procesó ningún pedido: siguen PENDIENTE. Volvé a ejecutarlos cuando haya licencias libres.")
+        sys.exit(LICENCIAS_EXIT_CODE)
+    if driver is None:
+        print("\n⏸️  Corrida abortada por el usuario.")
+        sys.exit(ABORT_EXIT_CODE)
     abortado = False
     try:
-        tp.login(driver)
         for fila in pedidos:
             chequear_abort()
             aplicar = modo_de(fila) == MODO_APLICAR
@@ -473,6 +633,8 @@ def main():
                     print("  ↪ lo tiene otra PC (o ya no está pendiente): se salta.")
                     continue
             ejecutar_pedido(driver, ws, fila, allocs, hoy, aplicar)
+            RESUMEN["pedidos"] += 1
+            guardar_estado(resumen=dict(RESUMEN))
     except AbortadoPorUsuario:
         abortado = True
         print("\n⏸️  Corrida abortada por el usuario.")
@@ -489,13 +651,19 @@ if __name__ == "__main__":
     _tee, _ruta_log = activar_log_a_archivo()
     if _ruta_log:
         print(f"📝 Log de esta ejecución: {_ruta_log}")
+    iniciar_estado()
+    _rc = 0
     try:
         main()
-    except SystemExit:
-        raise
+    except SystemExit as _e:
+        _rc = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
     except BaseException:
         traceback.print_exc()       # antes de cerrar el archivo, para que el error también quede en el log
-        sys.exit(1)
+        _rc = 1
     finally:
+        finalizar_estado(_rc)
         if _tee:
             _tee.cerrar()
+    if SONIDO:
+        sonar_fin(_rc)
+    sys.exit(_rc)

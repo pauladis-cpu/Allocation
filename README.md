@@ -19,7 +19,7 @@ de entorno + config por PC + OAuth de Google con gspread).
 | 4 | Rates en lectura (grilla de períodos, cortes y ediciones calculados) | **hecha, probada en Test** |
 | 5 | Rates en aplicar (split, tarifa en 0, status, Save) | **hecha, probada en Test** |
 | 6 | Cola completa (toma de pedidos, EN CURSO, «Enviar y ejecutar», «Ejecutar pendientes») | **hecha, probada en Test** |
-| 7 | Endurecimiento (errores, logs, reintentos) | pendiente |
+| 7 | Endurecimiento (errores, logs, reintentos) | en curso: historial de corridas, login con reintento por licencias y sonido hechos |
 
 Cómo se ejecuta: «Enviar a la cola» solo escribe el pedido. «Enviar y ejecutar» (ese pedido) y
 «Ejecutar pendientes» (todos) lanzan `runner.py`. Desde la interfaz **todos los pedidos nuevos se cargan en
@@ -48,6 +48,19 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
 
 **Producción:** el modo aplicar se niega a escribir en Producción salvo que, en la Configuración, el
 entorno sea Producción **y** esté tildada la autorización explícita. Por defecto está destildada.
+
+## Historial, login y sonido
+
+- **Historial** (vista en la barra superior): cada corrida lanzada desde la app guarda su carpeta en
+  `~/.tourplan-allocation/logs/AAAAMMDD_HHMMSS/` con `corrida.log`, `estado.json` y `screenshots/`. Se conservan las últimas 30.
+  La tabla muestra inicio, duración, estado, pedidos, fases OK / con error / salteadas, usuario y entorno; el ícono de la última
+  columna abre el log y las capturas de los errores.
+- **Capturas de pantalla**: solo se guardan cuando se reporta un error (`error_*`, `login_fallido`, `login_sin_*`).
+- **Licencias de Tourplan**: si el login muestra «Maximum Users Exceeded», el runner cierra Chrome, espera 5 minutos y reintenta,
+  hasta 3 intentos en total (la app muestra una cuenta regresiva). Si se agotan, no se procesa nada y los pedidos siguen
+  PENDIENTE. Otros errores de login no se reintentan.
+- **Sonido** al terminar la corrida (solo Windows): dos tonos ascendentes si salió bien, tres graves repetidos si hubo errores,
+  un beep corto si se abortó. Se desactiva en Configuración.
 
 ## Cómo correrla
 
@@ -116,7 +129,8 @@ allocation/
 tourplan_flujos/
   allocations.py        Selenium: supplier, menú, filtro, allocation, días; escritura solo en modo aplicar
   rates.py              Selenium: habitación (Product Find), grilla de períodos, cortes, edición
-runner.py               Proceso hijo: ejecuta los pedidos de la cola según el MODO de cada fila
+runner.py               Proceso hijo: ejecuta los pedidos de la cola según el MODO de cada fila; login con reintento por
+                        licencias, estado.json de la corrida y sonido final
 common/
   tourplan.py           Helpers Selenium (copiados de la referencia): login/logout, esperas, set_val
   abort.py, chrome_bootstrap.py   Copias sin cambios de Drive-TP-NX-App

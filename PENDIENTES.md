@@ -24,11 +24,18 @@
 - [ ] Plan de reversa y confirmación explícita de Producción en Configuración antes de aplicar.
 
 ## Etapa 7 (endurecimiento): propuesta, sin empezar
-- [x] Log de cada ejecución en archivo con hora por línea: `~/.tourplan-allocation/logs/ejecucion_AAAAMMDD_HHMMSS.log` (se conservan los últimos 30).
+- [x] Log de cada ejecución con hora por línea. Las corridas lanzadas desde la app tienen su carpeta
+  `~/.tourplan-allocation/logs/AAAAMMDD_HHMMSS/` (`corrida.log`, `estado.json`, `screenshots/`; se conservan las últimas 30);
+  una corrida manual de `runner.py` sigue dejando `ejecucion_*.log`.
+- [x] Historial de corridas: vista «Historial» de la app (inicio, duración, estado, resultados, log y capturas de errores).
+- [x] Capturas de pantalla solo cuando se reporta un error (`error_*`, `login_fallido`, `login_sin_*`).
+- [x] Login con reintento por licencias agotadas («Maximum Users Exceeded»): 3 intentos, 5 min entre cada uno, cartel con
+  cuenta regresiva en la app. Si se agotan, los pedidos siguen PENDIENTE (código de salida 76).
+- [x] Sonido al terminar la corrida (Windows; se desactiva en Configuración).
 - [x] Observaciones de la COLA con la acción sugerida cuando una fase da ERROR (`Qué hacer: …`).
-- [ ] Reintentos de pasos frágiles según lo que muestre Producción (login, abrir hotel, guardado).
+- [ ] Reintentos de pasos frágiles según lo que muestre Producción (abrir hotel, guardado). El login ya reintenta por licencias.
 - [ ] Retomar un pedido si el proceso muere sin abortar (pedido que queda EN CURSO).
-- [ ] Historial en la pestaña HISTORIAL del Sheet (a acordar: toca el esquema).
+- [ ] Historial en la pestaña HISTORIAL del Sheet (a acordar: toca el esquema). El historial local de la app ya existe.
 
 ## Revisar solo si aparece un caso
 - [ ] Lista de allocations del hotel (`tp-grid[tpid="allocations-grid"]`): hoy se busca solo entre las filas renderizadas (posible scroll virtual).

@@ -15,6 +15,7 @@ Campos:
   - "headless": Chrome sin ventana (default False).
   - "produccion_confirmada": autorización explícita para que el modo aplicar escriba en Producción
     (por defecto False: nada se escribe en Producción sin confirmarlo).
+  - "sonido": avisa con un sonido cuando termina una corrida (solo Windows; default True).
   - "minutos_abandono": un pedido EN CURSO hace más de N minutos se muestra
     como posiblemente abandonado.
 """
@@ -46,6 +47,7 @@ VALORES_DEFAULT = {
     "tp_password": "",
     "nombre": "",
     "headless": False,
+    "sonido": True,
     "minutos_abandono": 30,
     "produccion_confirmada": False,
 }

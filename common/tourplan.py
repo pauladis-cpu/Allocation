@@ -39,6 +39,14 @@ HEADLESS = os.environ.get("TOURPLAN_HEADLESS", "0").strip() in ("1", "true", "Tr
 CHROMIUM_BIN = None
 ver_chrome = ""
 
+# Cuando Tourplan no tiene licencias libres, el login muestra este texto en rojo y se queda
+# en #/login. El reintento (esperar y volver a probar) lo maneja runner.py.
+TEXTO_SIN_LICENCIAS = "maximum users exceeded"
+
+
+class LicenciasAgotadasError(Exception):
+    """Tourplan no tiene licencias disponibles ("Maximum Users Exceeded"): se arregla esperando y reintentando."""
+
 
 def crear_driver():
     global CHROMIUM_BIN, ver_chrome
@@ -97,8 +105,13 @@ def waitx(driver, xpath, t=12):
 
 _ss_n = [0]
 
+# Solo se guardan capturas cuando se reporta un error (nombres error_*, login_fallido, login_sin_*).
+_RE_CAPTURA_ERROR = re.compile(r"^(error_|login_fallido|login_sin_)")
+
 
 def ss(driver, nombre, ss_dir=SS_DIR):
+    if not _RE_CAPTURA_ERROR.match(nombre):
+        return None
     _ss_n[0] += 1
     nombre_seguro = re.sub(r"[^A-Za-z0-9_-]+", "_", nombre)[:60]
     os.makedirs(ss_dir, exist_ok=True)
@@ -304,6 +317,25 @@ def login(driver):
         except Exception:
             pass
     time.sleep(8 * VELOCIDAD)
+
+    def _sin_licencias():
+        try:
+            texto = driver.execute_script("return (document.body && document.body.innerText) || '';") or ""
+        except Exception:
+            return False
+        return TEXTO_SIN_LICENCIAS in texto.lower()
+
+    # El mensaje puede tardar un poco más en aparecer: mientras siga en el login se espera hasta ~4 s extra.
+    for _ in range(4):
+        if "login" not in driver.current_url.lower() or _sin_licencias():
+            break
+        time.sleep(1 * VELOCIDAD)
+    if _sin_licencias():
+        ss(driver, "login_sin_licencias")
+        raise LicenciasAgotadasError("Licencias agotadas: Tourplan no tiene licencias disponibles "
+                                     "(mensaje 'Maximum Users Exceeded')")
+    if "login" in driver.current_url.lower():
+        ss(driver, "login_fallido")
     assert "login" not in driver.current_url.lower(), "Login falló"
     ss(driver, "post_login")
     print("✅ Login OK")
