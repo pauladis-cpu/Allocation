@@ -60,7 +60,9 @@ class Plan:
     ediciones: list = field(default_factory=list)
     ya_cerrados: list = field(default_factory=list)   # filas que se saltean (ya cerradas)
     intocables: list = field(default_factory=list)    # filas del price code FX: nunca se editan
-    sin_periodo: list = field(default_factory=list)   # fechas del pedido que ningún período cubre
+    sin_periodo: list = field(default_factory=list)   # fechas dentro de la vigencia que ningún período cubre (error)
+    fuera_vigencia: list = field(default_factory=list)  # fechas posteriores al último período de la tarifa (no es error)
+    vigencia_hasta: object = None                     # fin del último período de la grilla (el de arriba de todo)
 
 
 def normalizar_status(txt):
@@ -162,11 +164,17 @@ def planear(periodos, rangos):
     cubiertas = []
     for p in periodos:
         cubiertas.append((p.ini, p.fin))
+    # Tourplan ordena los períodos de más nuevo a más viejo: el de arriba de todo es el último vigente. Una fecha sin
+    # período POSTERIOR a ese fin excede la vigencia de la tarifa (no es un error); si cae dentro, falta un período.
+    plan.vigencia_hasta = max((p.fin for p in periodos), default=None)
     for a, b in rangos:
         d = a
         while d <= b:
             if not any(i <= d <= f for i, f in cubiertas):
-                plan.sin_periodo.append(d)
+                if plan.vigencia_hasta is not None and d > plan.vigencia_hasta:
+                    plan.fuera_vigencia.append(d)
+                else:
+                    plan.sin_periodo.append(d)
             d += timedelta(days=1)
     return plan
 
@@ -221,4 +229,7 @@ def resumen(codigo_largo, plan, lectura=True):
     if plan.sin_periodo:
         from allocation.plan import _rangos_txt
         partes.append(f"SIN PERÍODO en Rates: {_rangos_txt(plan.sin_periodo)}")
+    if plan.fuera_vigencia:
+        from allocation.plan import _rangos_txt
+        partes.append(f"fuera de la vigencia de la tarifa (hasta {plan.vigencia_hasta:%d/%m/%y}): {_rangos_txt(plan.fuera_vigencia)}")
     return " · ".join(partes)

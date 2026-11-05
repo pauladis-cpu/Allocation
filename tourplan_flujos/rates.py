@@ -742,4 +742,8 @@ def procesar_habitacion(driver, codigo_hotel, cod_hab, rangos, aplicar=False, ma
     if final.sin_periodo:
         from allocation.plan import _rangos_txt
         texto += f" · SIN PERÍODO en Rates: {_rangos_txt(final.sin_periodo)}"
+    if final.fuera_vigencia:
+        from allocation.plan import _rangos_txt
+        texto += (f" · fuera de la vigencia de la tarifa (hasta {final.vigencia_hasta:%d/%m/%y}): "
+                  f"{_rangos_txt(final.fuera_vigencia)}")
     return final, texto, hechas + cortes

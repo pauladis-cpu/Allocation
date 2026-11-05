@@ -464,6 +464,7 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         log(f"    ✖ {e}")
         return cola.formato_error(str(e)), ""
     lineas, errores, trabajo = [], [], 0
+    solo_fuera, procesadas = [], 0   # solo_fuera: habitaciones cuyas fechas están todas fuera de la vigencia de la tarifa
     for h in habs:
         chequear_abort()
         log(f"    · habitación {h}")
@@ -484,12 +485,18 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         lineas.append(texto)
         log(f"    ✔ {texto}")
         trabajo += n
-        if plan_hab.sin_periodo:       # fecha que ningún período de Rates cubre: no se pudo cerrar = error
+        procesadas += 1
+        if (n == 0 and plan_hab.fuera_vigencia and not plan_hab.sin_periodo and not plan_hab.ya_cerrados
+                and not plan_hab.intocables):
+            solo_fuera.append(h)
+        if plan_hab.sin_periodo:       # fecha DENTRO de la vigencia que ningún período cubre: no se pudo cerrar = error
             errores.append(f"{h}: sin período en Rates para {plan._rangos_txt(plan_hab.sin_periodo)}")
             log(f"    ✖ {errores[-1]}")
     texto = " | ".join(lineas)
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
+    if trabajo == 0 and procesadas and len(solo_fuera) == procesadas:
+        return cola.ESTADO_NO_APLICA, "las fechas exceden la vigencia de la tarifa · " + texto
     if trabajo == 0:
         return cola.ESTADO_SALTEADO, "ya estaba todo cerrado · " + texto
     return cola.ESTADO_OK, texto

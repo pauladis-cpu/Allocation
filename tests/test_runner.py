@@ -317,3 +317,16 @@ def test_fecha_sin_periodo_en_rates_es_un_error(flujo, monkeypatch):
 def test_periodos_ya_cerrados_en_rates_no_son_un_error(flujo, monkeypatch):
     f = _correr(flujo, monkeypatch, plan_tarifa=rates_plan.Plan())
     assert not f[cola.C_EST_TARIFA].startswith("ERROR")
+
+
+def test_fechas_que_exceden_la_vigencia_de_la_tarifa_no_son_error(flujo, monkeypatch):
+    d = date(2026, 10, 8)
+    f = _correr(flujo, monkeypatch, plan_tarifa=rates_plan.Plan(fuera_vigencia=[d], vigencia_hasta=date(2026, 9, 30)))
+    assert f[cola.C_EST_TARIFA] == "NO APLICA" and "exceden la vigencia" in f[cola.C_OBS_TARIFA]
+
+
+def test_hueco_dentro_de_la_vigencia_sigue_siendo_error_aunque_otras_fechas_excedan(flujo, monkeypatch):
+    d = date(2026, 10, 8)
+    f = _correr(flujo, monkeypatch, plan_tarifa=rates_plan.Plan(sin_periodo=[d], fuera_vigencia=[date(2026, 12, 1)],
+                                                                 vigencia_hasta=date(2026, 11, 30)))
+    assert f[cola.C_EST_TARIFA].startswith("ERROR") and "sin período en Rates para 08/10/26" in f[cola.C_EST_TARIFA]

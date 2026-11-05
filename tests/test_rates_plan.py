@@ -130,7 +130,8 @@ def test_resumen_informa_fx():
 def test_fuera_del_rango_no_frena():
     g = [P(D(2026, 1, 1), D(2026, 1, 31), "TR", "Provisional")]
     plan = r.planear(g, [(D(2026, 12, 10), D(2026, 12, 12))])
-    assert plan.ediciones == [] and plan.sin_periodo[0] == D(2026, 12, 10)
+    assert plan.ediciones == [] and plan.sin_periodo == []
+    assert plan.fuera_vigencia[0] == D(2026, 12, 10) and plan.vigencia_hasta == D(2026, 1, 31)   # excede la vigencia: no es error
 
 
 def test_status_ambiguo_o_desconocido_frena():
@@ -226,3 +227,12 @@ def test_los_rate_sets_nunca_quedan_con_status_distintos():
         actuales = r.statuses_de(txt)
         finales = {d or a for d, a in zip(r.decidir_statuses(txt, pc), actuales)}
         assert len(finales) == 1
+
+
+def test_fecha_dentro_de_la_vigencia_sin_periodo_es_un_hueco_y_posterior_excede_la_vigencia():
+    # períodos: ene y mar-abr; el último vigente (el de más arriba) termina el 30/04
+    g = [P(D(2026, 3, 1), D(2026, 4, 30), "TR", "Manual"), P(D(2026, 1, 1), D(2026, 1, 31), "TR", "Manual")]
+    plan = r.planear(g, [(D(2026, 2, 10), D(2026, 2, 11)), (D(2026, 5, 10), D(2026, 5, 11))])
+    assert plan.sin_periodo == [D(2026, 2, 10), D(2026, 2, 11)]                    # hueco dentro de la vigencia: error
+    assert plan.fuera_vigencia == [D(2026, 5, 10), D(2026, 5, 11)] and plan.vigencia_hasta == D(2026, 4, 30)
+    assert "fuera de la vigencia de la tarifa (hasta 30/04/26)" in r.resumen("HAB", plan)

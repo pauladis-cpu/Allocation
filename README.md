@@ -34,8 +34,10 @@ una fila cargada a mano con `MODO = lectura` se sigue tratando como lectura:
   por fase. Es resumible (solo corre fases PENDIENTE) e idempotente. Un error no frena el lote.
   `NO APLICA` = la fase no corresponde al pedido (allocation vacía, como Ibis Obelisco: nada que cerrar en allocation;
   o ninguna allocation cierra tarifa). `SALTEADO` = correspondía pero ya estaba todo cerrado.
-  Una fecha **sin fila** en la allocation (salvo las posteriores a «Vigente hasta»), o **sin período** en Rates, es un
-  `ERROR` (no se pudo cerrar): una fecha que ya estaba cerrada, no.
+  Una fecha **sin fila** en la allocation (salvo las posteriores a «Vigente hasta»), o **sin período** en Rates *dentro de la
+  vigencia de la tarifa*, es un `ERROR` (no se pudo cerrar): una fecha que ya estaba cerrada, no. La vigencia termina
+  donde termina el período de arriba de todo en Rates (Tourplan los ordena de más nuevo a más viejo): una fecha
+  posterior no es error, se informa como «fuera de la vigencia de la tarifa»; si todas lo están, la fase queda `NO APLICA`.
 
 **Reglas de tarifas (actualizan la especificación original):**
 - Status objetivo: Manual para TR, ND y EM; Closed para el resto.
