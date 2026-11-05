@@ -104,6 +104,7 @@ CSS = """
 .st-key-topbar button { border-radius:8px; font-weight:500; padding:.35rem 1rem; }
 .st-key-topbar [data-testid="stBaseButton-primary"] { background:var(--acc-bg); color:var(--acc); border:none; box-shadow:none; }
 .st-key-topbar [data-testid="stBaseButton-tertiary"] { color:#374151; }
+.st-key-badge_cola { display:none; }
 .st-key-page { padding:12px 3vw 0 3vw; gap:.6rem; }
 .entorno { font-size:.78rem; font-weight:600; padding:.2rem .6rem; border-radius:999px; background:#eceef1; color:#4b5563; }
 .entorno.prod { background:#fde8e8; color:#9b1c1c; }
@@ -336,7 +337,7 @@ def render_topbar():
     cfg = user_config.cargar()
     vista = st.session_state["vista"]
     with st.container(key="topbar"):
-        c_tit, c_nuevo, c_cola, c_hist, c_esp, c_env, c_user = st.columns([2.3, 1.3, 0.8, 1.0, 4, 1.1, 2.2])
+        c_tit, c_nuevo, c_cola, c_hist, c_esp, c_env, c_user = st.columns([2.3, 1.3, 1.05, 1.0, 3.75, 1.1, 2.2])
         c_tit.markdown('<span class="titulo">Cierre de allotment</span>', unsafe_allow_html=True)
         c_nuevo.button("Nuevo pedido", key="tab_nuevo", use_container_width=True,
                        type="primary" if vista == "nuevo" else "tertiary",
@@ -353,6 +354,8 @@ def render_topbar():
         if c_user.button(f"{cfg['nombre'] or 'Usuario'}  ⚙", key="user_btn", type="tertiary",
                          use_container_width=True, help="Configuración"):
             dialogo_configuracion()
+        with st.container(key="badge_cola"):
+            _badge_cola()
     # primera vez en esta PC: abre la configuración una sola vez
     if not (cfg["nombre"] and cfg["tp_usuario"]) and not st.session_state.get("_cfg_visto"):
         st.session_state["_cfg_visto"] = True
@@ -697,6 +700,7 @@ def render_revisar():
         except Exception as e:
             st.error(f"No se pudo enviar el pedido: {e}")
             return
+        st.session_state["cola_ts"] = 0       # que el globito de «Cola» cuente el pedido recién enviado
         _resetear_pedido()
         for k in ("hotel_clave", "hotel_sel"):
             st.session_state.pop(k, None)
@@ -772,6 +776,31 @@ def _cola_datos(forzar=False):
             ss["cola_error"] = str(e)
         ss["cola_ts"] = time.time()
     return ss.get("cola_datos", [])
+
+
+def _pendientes_cola():
+    """Cantidad de pedidos con alguna fase PENDIENTE: los que «Ejecutar pendientes» procesaría. None si no se pudo leer."""
+    pedidos = _cola_datos()
+    if st.session_state.get("cola_error"):
+        return None
+    return sum(1 for p in pedidos
+               if cola.ESTADO_PENDIENTE in (cola.clasificar_estado(p["est_allotment"]),
+                                            cola.clasificar_estado(p["est_tarifa"])))
+
+
+@st.fragment(run_every=INTERVALO_COLA)
+def _badge_cola():
+    """Globito con la cantidad de pedidos pendientes en la pestaña «Cola» (se actualiza solo): para acordarse de
+    ejecutar cuando se hacen varias cargas durante el día."""
+    n = _pendientes_cola()
+    if not n:
+        return
+    st.markdown(
+        "<style>.st-key-tab_cola button [data-testid='stMarkdownContainer'] p::after {"
+        f"content:'{int(n)}'; display:inline-block; margin-left:.5rem; min-width:1.35rem; height:1.35rem; "
+        "line-height:1.35rem; padding:0 .35rem; border-radius:999px; background:#d97706; color:#fff; "
+        "font-size:.76rem; font-weight:700; text-align:center; vertical-align:middle; }</style>",
+        unsafe_allow_html=True)
 
 
 @st.fragment(run_every=INTERVALO_COLA)
