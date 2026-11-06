@@ -1,11 +1,11 @@
-"""Cierre de allotment y tarifas convenio — Tourplan NX.
+"""Cierre de allocation y tarifas convenio — Tourplan NX.
 
 App local (Streamlit) que corre en la PC de cada persona. Busca el hotel en el
 registro (hoja ALLOCATIONS), arma el pedido (fechas + allocations) y lo escribe
 en la cola (hoja COLA) del Google Sheet. Los pedidos nuevos se cargan siempre en modo
 aplicar (el modo lectura ya no se ofrece en la interfaz; el runner sigue entendiendo filas con MODO lectura).
 
-Interfaz: barra superior (Nuevo pedido / Cola / usuario) y un flujo de 3 pasos
+Interfaz: barra superior (Nuevo pedido / Cola / Historial / usuario) y un flujo de 3 pasos
 (1 Hotel, 2 Fechas y alcance, 3 Revisar y enviar), según el esquema de pantallas.
 «Enviar a la cola» solo escribe el pedido; «Enviar y ejecutar» y «Ejecutar pendientes» lanzan
 runner.py, que usa el MODO de cada fila (aplicar: toma el pedido y cierra en Tourplan). Escribir en Producción exige autorización explícita en la
@@ -338,7 +338,7 @@ def render_topbar():
     vista = st.session_state["vista"]
     with st.container(key="topbar"):
         c_tit, c_nuevo, c_cola, c_hist, c_esp, c_env, c_user = st.columns([2.3, 1.3, 1.05, 1.0, 3.75, 1.1, 2.2])
-        c_tit.markdown('<span class="titulo">Cierre de allotment</span>', unsafe_allow_html=True)
+        c_tit.markdown('<span class="titulo">Cierre de allocation</span>', unsafe_allow_html=True)
         c_nuevo.button("Nuevo pedido", key="tab_nuevo", use_container_width=True,
                        type="primary" if vista == "nuevo" else "tertiary",
                        on_click=_set_vista, args=("nuevo",))
@@ -560,10 +560,10 @@ def render_fechas():
         if checked_css:
             st.markdown(f"<style>{''.join(checked_css)}</style>", unsafe_allow_html=True)
         st.markdown(
-            '<div class="ayuda">Destildá una para cargar solo la otra. Si el hotel tiene una sola allocation, '
+            '<div class="ayuda">Destildá las que no quieras cargar. Si el hotel tiene una sola allocation, '
             'viene preseleccionada. La descripción de cada allocation viene del registro y suele traer '
             'indicaciones para cerrarla. Las fechas posteriores a «Vigente hasta» se informan: en allocation '
-            'no se tocan y en tarifas sí se cierran.</div>', unsafe_allow_html=True)
+            'no se tocan; en tarifas se cierran, salvo que la allocation sea HG (descripción que empieza con «HG»).</div>', unsafe_allow_html=True)
         por_definir = _por_definir(elegidas)
         if por_definir:
             st.error("No se puede continuar: " + ", ".join(a.codigo for a in por_definir)
@@ -593,8 +593,9 @@ def _paso_allocation_html(elegidas):
         return ("<b>Allocation.</b> Las allocations elegidas están vacías: no hay nada que cerrar en allocation, "
                 "solo tarifas.")
     txt = ("<b>Allocation.</b> Por cada fecha lee Used. Con Used en cero pone Max en 0. Con Used mayor a cero "
-           "iguala Max a Used (aunque Max sea menor) y pone Release en 9999. Se repite en cada habitación "
-           "elegida. Las fechas ya cerradas se saltean y nunca se reabre.")
+           "iguala Max a Used (aunque Max sea menor) y pone Release en 9999. Se repite en cada allocation "
+           "elegida. Las fechas ya cerradas se saltean y nunca se reabre. Una fecha sin fila en la allocation deja "
+           "el pedido en ERROR (salvo las posteriores a «Vigente hasta», que solo se informan).")
     if vacias:
         txt += f" {esc(', '.join(a.codigo for a in vacias))} está vacía y se saltea en allocation."
     return txt
@@ -615,9 +616,12 @@ def _paso_tarifa_html(elegidas):
             alcance.append("las habitaciones " + (a.habitaciones_a_cerrar if t == "OTRO" else a.tarifas))
     unicos = list(dict.fromkeys(alcance))
     return ("<b>Tarifa convenio.</b> Cierra la tarifa de " + esc(" y de ".join(unicos)) + ", con un período por "
-            "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto (un período Terminal pasa a "
-            "Closed, salvo EM que pasa a Manual). Lo que ya está cerrado se saltea, un período en Closed nunca pasa "
-            "a Manual y al price code FX nunca se le cambia la tarifa ni el status (sí puede cortarse).")
+            "rango y la tarifa en 0. Status Manual para TR, ND y EM, y Closed para el resto (Confirmed, Provisional y "
+            "Terminal se tratan igual). Lo que ya está cerrado se saltea, un período en Closed nunca pasa "
+            "a Manual y al price code FX nunca se le cambia la tarifa ni el status (sí puede cortarse). Si el período "
+            "tiene varios rate sets, cada uno se procesa y todos quedan en el mismo status. Si la allocation es HG, "
+            "las tarifas se cierran solo hasta «Vigente hasta». Una fecha sin período dentro de la vigencia de la "
+            "tarifa deja el pedido en ERROR; una posterior al último período solo se informa.")
 
 
 def render_revisar():
@@ -658,7 +662,7 @@ def render_revisar():
                         st.markdown(
                             f'<div class="aviso-ambar">{esc(a.codigo)}: {len(despues)} fecha(s) posteriores a la '
                             f'vigencia ({fmt_fecha(a.vigente_hasta)}): en allocation no se tocan'
-                            f'{", en tarifas sí se cierran" if a.cierra_tarifa else ""}.</div>',
+                            f'{", en tarifas se cierran (salvo que la allocation sea HG)" if a.cierra_tarifa else ""}.</div>',
                             unsafe_allow_html=True)
             st.divider()
             st.markdown("**Qué va a hacer el script**")
@@ -821,7 +825,7 @@ def _tabla_cola():
         else:
             st.markdown(
                 '<table class="cola"><thead><tr><th>ID_PEDIDO</th><th>Hotel</th><th>Habitaciones</th><th>Fechas</th>'
-                '<th>MODO</th><th>Allotment</th><th>Tarifa</th><th>Observaciones</th></tr></thead><tbody>'
+                '<th>MODO</th><th>Allocation</th><th>Tarifa</th><th>Observaciones</th></tr></thead><tbody>'
                 + "".join(_fila_cola_html(p) for p in pedidos) + "</tbody></table>", unsafe_allow_html=True)
 
 
@@ -840,7 +844,7 @@ def render_cola():
     corriendo = _estado_ejecucion()["running"]
     if c_ej.button("Ejecutar pendientes", type="primary", use_container_width=True, key="ejecutar_pendientes",
                    disabled=corriendo or not lista,
-                   help=motivo or "Procesa los pedidos PENDIENTE según el MODO de cada fila."):
+                   help=motivo or "Procesa los pedidos PENDIENTE según el MODO de cada fila (las cargadas a mano con MODO lectura solo dejan el plan en observaciones)."):
         lanzar_runner()
         st.rerun()
     if st.session_state.get("_lanzar") and not corriendo:        # viene de «Enviar y ejecutar»
@@ -849,15 +853,17 @@ def render_cola():
     if not lista:
         st.caption(motivo)
     _tabla_cola()
-    st.markdown('<div class="ayuda" style="margin-top:.6rem">Estados: PENDIENTE, EN CURSO, OK, SALTEADO, NO APLICA o ERROR '
-                'con detalle. EN CURSO: lo está ejecutando una PC. &nbsp;&nbsp; El script no frena el lote por un '
-                f'error puntual y se puede retomar. La vista se actualiza sola cada {INTERVALO_COLA} segundos.</div>',
+    st.markdown('<div class="ayuda" style="margin-top:.6rem">PENDIENTE: falta ejecutar (el número junto a «Cola» cuenta los '
+                'pedidos con alguna fase pendiente). EN CURSO: lo ejecuta una PC. SALTEADO: ya estaba cerrado. NO APLICA: la '
+                'fase no corresponde (allocation vacía, sin tarifa o fechas fuera de la vigencia de la tarifa). ERROR: no se '
+                'pudo cerrar; mirá Observaciones («Qué hacer»). &nbsp;&nbsp; El script no frena el lote por un error puntual y '
+                f'se puede retomar. La vista se actualiza sola cada {INTERVALO_COLA} segundos.</div>',
                 unsafe_allow_html=True)
     st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
     render_ejecucion()
 
 
-# ── Lectura del plan en Tourplan (proceso hijo, etapa 2) ─────────────────
+# ── Ejecución del runner (proceso hijo) ──────────────────────────────────
 
 def _leer_proceso(proc, state):
     """Hilo aparte: lee el stdout del subproceso sin bloquear a Streamlit."""
@@ -945,14 +951,14 @@ def render_ejecucion():
         rc = state["returncode"]
         st.session_state["cola_ts"] = 0  # releer la cola con lo que dejó el runner
         if rc == 0:
-            st.success("Terminó OK. La cola se actualizó: mirá los estados y las observaciones.")
+            st.success("La corrida terminó. Revisá los estados y las observaciones de la cola: puede haber pedidos con ERROR.")
         elif rc == ABORT_EXIT_CODE:
             st.info("⏸️ Abortado. Lo que quedó sin procesar sigue PENDIENTE.")
         elif rc == LICENCIAS_EXIT_CODE:
             st.error("Licencias agotadas: Tourplan no tuvo licencias libres tras los reintentos. No se procesó nada: "
                      "los pedidos siguen PENDIENTE; volvé a ejecutarlos más tarde.")
         else:
-            st.error(f"El proceso terminó con error (código {rc}). Revisá el log.")
+            st.error(f"El proceso terminó con error (código {rc}). Revisá el log en la vista Historial.")
     if state["running"]:
         time.sleep(1)
         st.rerun()
@@ -1077,7 +1083,7 @@ def render_historial():
 # ── Programa principal ────────────────────────────────────────────────────
 
 def main():
-    st.set_page_config(page_title="Cierre de allotment — Tourplan NX", layout="wide",
+    st.set_page_config(page_title="Cierre de allocation — Tourplan NX", layout="wide",
                        initial_sidebar_state="collapsed")
     _inyectar_css()
     if "_logs_limpiados" not in st.session_state:

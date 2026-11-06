@@ -1,4 +1,4 @@
-"""Flujo Selenium de Rates (spec sección 6): ir a la habitación, leer la grilla de períodos,
+"""Flujo Selenium de Rates: ir a la habitación, leer la grilla de períodos,
 cortar (split) y editar (tarifa en 0 + status). Las decisiones salen de allocation/rates_plan.py.
 
 Escribe en Tourplan SOLO si aplicar=True. En lectura solo navega y lee.
@@ -424,7 +424,7 @@ def hacer_corte(driver, cod_largo, periodo, fecha_corte):
             esperado = list(zip(inicios, finales))
             if parseados != esperado:
                 raise FlujoError(f"El split dejó {parseados}, se esperaba {esperado}.")
-        driver.execute_script(_JS_DLG + "dlg.querySelector('tp-button.ok button').click();")   # un solo corte por diálogo
+        driver.execute_script(_JS_DLG + "dlg.querySelector('tp-button.ok button').click();")   # OK una sola vez, con todos los cortes de este período cargados
         time.sleep(1.2 * tp.VELOCIDAD)
         tp.esperar_fin_carga(driver, velocidad=tp.VELOCIDAD)
         _guardar_o_salir_periodo(driver)

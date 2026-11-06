@@ -218,9 +218,9 @@ def test_dos_pcs_nadie_procesa_el_mismo_pedido_dos_veces():
 
 def test_escribir_fase():
     ws = _ws_con_pedido()
-    cola.escribir_fase(ws, 2, "tarifa", "SALTEADO", "no cierra tarifa")
+    cola.escribir_fase(ws, 2, "tarifa", "NO APLICA", "no cierra tarifa")
     f = dict(zip(cola.COLUMNAS_COLA, ws.filas[1]))
-    assert (f[cola.C_EST_TARIFA], f[cola.C_OBS_TARIFA], f[cola.C_EST_ALLOT]) == ("SALTEADO", "no cierra tarifa", "PENDIENTE")
+    assert (f[cola.C_EST_TARIFA], f[cola.C_OBS_TARIFA], f[cola.C_EST_ALLOT]) == ("NO APLICA", "no cierra tarifa", "PENDIENTE")
 
 
 def test_toma_de_nuevo_un_pedido_reseteado_a_pendiente_aunque_quede_un_tomado_por_viejo():
@@ -237,3 +237,14 @@ def test_sugerencia_de_accion_ante_un_error():
     assert "Vigente hasta" in cola.sugerencia("A: la descripción empieza con HG pero «Vigente hasta» no tiene una fecha")
     assert "PENDIENTE" not in cola.sugerencia("no quedan fechas vigentes para cerrar.")     # reintentar no sirve
     assert "log" in cola.sugerencia("algo inesperado") and "PENDIENTE" in cola.sugerencia("algo inesperado")
+
+
+def test_fase_tarifa_hg_sin_fechas_en_vigencia_es_no_aplica(monkeypatch):
+    """Si la allocation es HG y ninguna fecha cae dentro de su vigencia, la fase tarifa queda NO APLICA."""
+    import runner
+    from allocation import cola as _cola
+    monkeypatch.setattr(runner, "habitaciones_a_cerrar", lambda *a, **k: ["H1", "H2"])
+    monkeypatch.setattr(runner, "fechas_por_habitacion", lambda habs, el, f: {h: [] for h in habs})
+    estado, obs = runner.fase_tarifa(None, "HOT", [], ["2027-01-01"], True)
+    assert estado == _cola.ESTADO_NO_APLICA
+    assert "allocation HG" in obs

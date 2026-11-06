@@ -1,6 +1,6 @@
 """Fechas de un pedido: atajos de texto, rangos, validación y texto normalizado.
 
-Reglas (spec sección 3):
+Reglas:
   - Las fechas pasadas se descartan; HOY cuenta como vigente.
   - Se rechazan fechas a más de WINDOW_YEARS años de hoy.
   - Texto normalizado para la cola: fechas ISO separadas por ";" y rangos con

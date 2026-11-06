@@ -9,7 +9,7 @@ D = date
 
 
 def grilla_nov(status_tail="Confirmed"):
-    """Ejemplo de la spec 6.4: 17/11-23/11, 24/11 y 25/11-27/11 en Manual; 28/11-30/11 en Confirmed."""
+    """Ejemplo: 17/11-23/11, 24/11 y 25/11-27/11 en Manual; 28/11-30/11 en Confirmed."""
     filas = []
     for pc in ("TR", "ND"):
         filas += [P(D(2026, 11, 17), D(2026, 11, 23), pc, "Manual"), P(D(2026, 11, 24), D(2026, 11, 24), pc, "Manual"),

@@ -9,7 +9,7 @@
 - [x] Regla HG (tarifas solo hasta «Vigente hasta»).
 - [x] Dos PCs con la misma cola (toma de pedidos); un TOMADO_POR viejo ya no bloquea reintentos.
 - [x] Filtro «Date To» del diálogo de la allocation.
-- [x] Estado «NO APLICA» cuando ninguna allocation cierra tarifa.
+- [x] Estado «NO APLICA» cuando ninguna allocation cierra tarifa, la allocation está vacía (Ibis Obelisco) o las fechas caen fuera de la vigencia (tarifa o allocation HG).
 
 ## Validado en Test: rate sets
 - [x] Períodos con varios rate sets: cada uno se procesa igual (tarifa en 0 y status) y se guarda una sola vez.
@@ -18,12 +18,12 @@
 
 ## Pendiente: Producción
 - [ ] A la espera del cierre para probar en Producción. Primera corrida: un solo pedido chico, un hotel conocido,
-  verificado a mano en Tourplan después (ver sección 7 de `CHECKLIST_PRUEBAS.md`).
+  verificado a mano en Tourplan después.
 - [ ] Velocidad de espera: en Producción la app usa ×1.5 (fijo en `app.py`). Si aparecen avisos de «dialog de carga» o
   de «la grilla todavía no refleja…», subirla (idea: campo «Velocidad» en Configuración).
 - [ ] Plan de reversa y confirmación explícita de Producción en Configuración antes de aplicar.
 
-## Etapa 7 (endurecimiento): propuesta, sin empezar
+## Etapa 7 (endurecimiento): en curso
 - [x] Log de cada ejecución con hora por línea. Las corridas lanzadas desde la app tienen su carpeta
   `~/.tourplan-allocation/logs/AAAAMMDD_HHMMSS/` (`corrida.log`, `estado.json`, `screenshots/`; se conservan las últimas 30);
   una corrida manual de `runner.py` sigue dejando `ejecucion_*.log`.

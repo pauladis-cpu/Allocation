@@ -1,4 +1,4 @@
-"""Decisión de cierre de tarifas por período + price code (spec secciones 4 y 6.4).
+"""Decisión de cierre de tarifas por período + price code .
 Lógica pura, sin Selenium: recibe la grilla de períodos leída de Rates y los rangos de
 fechas a cerrar, y devuelve qué cortes (splits) y qué ediciones hacen falta.
 
@@ -14,6 +14,9 @@ Reglas:
   - Un período en Closed NUNCA pasa a Manual (dos barreras: acá y justo antes del clic).
   - Un período por rango consecutivo. No se fusionan períodos existentes.
   - Solo se parte donde el borde del rango cae ADENTRO del período.
+  - Vigencia de la tarifa: Tourplan ordena los períodos de más nuevo a más viejo, así que el de arriba de todo es el
+    último vigente. Una fecha sin período POSTERIOR a ese fin excede la vigencia (se informa, no es error); una sin
+    período DENTRO de la vigencia es un hueco (error).
 """
 
 import re

@@ -1,4 +1,4 @@
-"""Decisión de cierre por fecha en una allocation (spec sección 4). Lógica pura,
+"""Decisión de cierre por fecha en una allocation Lógica pura,
 sin Selenium: recibe lo leído de Tourplan y devuelve qué hacer.
 
 | Situación  | Acción                      | ¿Ya cerrada?                    |

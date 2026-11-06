@@ -22,7 +22,8 @@ Variables de entorno opcionales:
                         licencias) y screenshots/. Sin ella, el log va a TOURPLAN_LOG_DIR como ejecucion_*.log.
   TOURPLAN_SONIDO=1     avisa con un sonido al terminar la corrida (solo Windows).
 
-Cada línea del log (pantalla y archivo) lleva la hora [HH:MM:SS]; se conservan los últimos LOGS_A_CONSERVAR archivos.
+Cada línea del log (pantalla y archivo) lleva la hora [HH:MM:SS]. Sin TOURPLAN_RUN_DIR se conservan los últimos
+LOGS_A_CONSERVAR archivos; con él, la app limpia las corridas viejas.
 
 Login: si Tourplan no tiene licencias libres («Maximum Users Exceeded») se cierra Chrome, se espera
 LICENCIAS_ESPERA_MIN minutos y se reintenta, hasta LICENCIAS_MAX_INTENTOS intentos. Si se agotan, no se procesa nada
@@ -352,7 +353,7 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
         # fila. Una fecha que ya estaba cerrada NO es un error.
         faltan = [x.fecha for x in acciones if x.tipo == plan.SIN_FILA and (not a.vigente_hasta or x.fecha <= a.vigente_hasta)]
         if faltan:
-            errores.append(f"{a.codigo}: sin fila en la allocation para {plan._rangos_txt(faltan)}")
+            errores.append(f"{a.codigo}: sin fila en la allocation para {plan._rangos_txt(faltan)} (no se pudo cerrar)")
             log(f"    ✖ {errores[-1]}")
     texto = " | ".join(lineas)
     if errores:
@@ -373,7 +374,7 @@ def codigos_de(texto):
 
 def habitaciones_a_cerrar(driver, codigo_hotel, elegidas):
     """None si ninguna allocation del pedido cierra tarifa; si no, la lista (sin repetir) de
-    habitaciones: LINKEADA, TODAS (se lee de Tourplan) o la lista de códigos del registro."""
+    habitaciones: LINKEADA, TODAS (se lee de Tourplan), OTRO (columna «Habitaciones a cerrar») o la lista de códigos del registro."""
     from tourplan_flujos import rates as rt
     con = [a for a in elegidas if a.cierra_tarifa]
     if not con:
@@ -465,12 +466,14 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
         return cola.formato_error(str(e)), ""
     lineas, errores, trabajo = [], [], 0
     solo_fuera, procesadas = [], 0   # solo_fuera: habitaciones cuyas fechas están todas fuera de la vigencia de la tarifa
+    omitidas_hg = []                 # habitaciones sin ninguna fecha dentro de la vigencia de la allocation HG
     for h in habs:
         chequear_abort()
         log(f"    · habitación {h}")
         if not fechas_hab[h]:
             lineas.append(f"{h}: ninguna fecha dentro de la vigencia (HG): no se cierran tarifas")
             log(f"    ○ {lineas[-1]}")
+            omitidas_hg.append(h)
             continue
         if len(fechas_hab[h]) < len(fechas):
             log(f"    ℹ allocation HG: tarifas solo hasta la vigencia ({len(fechas_hab[h])} de {len(fechas)} fecha(s))")
@@ -495,8 +498,11 @@ def fase_tarifa(driver, codigo_hotel, elegidas, fechas, aplicar):
     texto = " | ".join(lineas)
     if errores:
         return cola.formato_error(" | ".join(errores)), texto
-    if trabajo == 0 and procesadas and len(solo_fuera) == procesadas:
-        return cola.ESTADO_NO_APLICA, "las fechas exceden la vigencia de la tarifa · " + texto
+    if trabajo == 0 and (solo_fuera or omitidas_hg) and len(solo_fuera) + len(omitidas_hg) == len(habs):
+        motivo = ("las fechas exceden la vigencia de la tarifa" if solo_fuera and not omitidas_hg else
+                  "ninguna fecha cae dentro de la vigencia de la allocation HG" if omitidas_hg and not solo_fuera else
+                  "las fechas exceden la vigencia (de la allocation HG o de la tarifa)")
+        return cola.ESTADO_NO_APLICA, motivo + " · " + texto
     if trabajo == 0:
         return cola.ESTADO_SALTEADO, "ya estaba todo cerrado · " + texto
     return cola.ESTADO_OK, texto
@@ -517,7 +523,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
             accion = cola.sugerencia(estado)
             log(f"  ▸ {accion}")
             obs = f"{obs} ▸ {accion}" if obs else accion
-        log(f"  ■ Fase {fase}: {estado or '(lectura: solo observaciones)'}"
+        log(f"  ■ Fase {'allocation' if fase == ALLOT else fase}: {estado or '(lectura: solo observaciones)'}"
             + (f" — {obs[:500]}" if obs else ""))
         contar_fase(estado)
         if aplicar:
@@ -544,7 +550,7 @@ def ejecutar_pedido(driver, ws, fila, allocs_registro, hoy, aplicar):
                                                   else f"{estado} | {obs}"))
         if TARIFA in fases:
             if resultado_allot and resultado_allot.startswith(cola.ESTADO_ERROR) and aplicar:
-                # no se avanza a tarifas si falló allotment: queda PENDIENTE para retomar
+                # no se avanza a tarifas si falló allocation: queda PENDIENTE para retomar
                 log("  ■ Fase tarifa: no se evalúa porque falló la fase de allocation (queda PENDIENTE)")
                 cola.escribir_fase(ws, row, TARIFA, cola.ESTADO_PENDIENTE, "no se evaluó: falló la fase de allocation")
                 en_curso.discard(TARIFA)

@@ -2,7 +2,7 @@
 
 Un pedido es un hotel. Cada fase (allocation, tarifa) tiene su propio estado
 para poder retomar si una falla. Estados: PENDIENTE -> EN CURSO -> OK /
-SALTEADO / "ERROR: detalle".
+SALTEADO / NO APLICA / "ERROR: detalle".
 
 La hoja ya no usa la columna "Hotel" (el nombre se resuelve con el registro).
 Si todavía existe en el Sheet, la app la ignora y nunca la escribe. Las columnas

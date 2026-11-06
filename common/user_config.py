@@ -7,7 +7,7 @@ Carpeta propia (~/.tourplan-allocation) para no pisar la config de la otra app
 si conviven en la misma PC.
 
 Campos:
-  - "sheet_url": URL del Google Sheet del registro (ALLOCATIONS/COLA/HISTORIAL).
+  - "sheet_url": URL del Google Sheet del registro (hojas ALLOCATIONS y COLA).
   - "entorno": "test" (default) o "produccion". Producción es una decisión
     deliberada, nunca el default.
   - "tp_usuario" / "tp_password": credenciales de Tourplan (texto plano, local).

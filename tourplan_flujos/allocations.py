@@ -1,10 +1,8 @@
-"""Flujo Selenium de Allocations (spec sección 5) — ETAPA 2: SOLO LECTURA.
+"""Flujo Selenium de Allocations: navega, filtra, abre la allocation, verifica código, descripción y
+habitación, lee los días y, solo en modo aplicar (aplicar_dias), escribe Max/Release, guarda y verifica.
+Sin aplicar, lo único que se "escribe" en pantalla es la fecha "hasta" del filtro de la grilla.
 
-Este módulo no tiene ninguna función que escriba Max/Release ni que haga Save:
-solo navega, filtra, abre la allocation, verifica y lee los días. Lo único que
-se "escribe" en pantalla es la fecha "hasta" del filtro de la grilla.
-
-Convenciones (sección 8): selectores por clases de componente, tpid y texto
+Convenciones: selectores por clases de componente, tpid y texto
 visible; nunca _ngcontent-*, ids con GUID ni nth-of-type; los botones se eligen
 dentro del diálogo activo (el último body > tp-dialog); las filas de la grilla
 virtual se releen por su etiqueta de fecha, nunca por índice ni referencia.
@@ -488,7 +486,7 @@ def _ultima_fecha_cargada(driver):
     return max(fechas) if fechas else None
 
 
-# ── Escritura (ETAPA 3: solo se usa en modo aplicar) ────────────────────────
+# ── Escritura (solo se usa en modo aplicar) ─────────────────────────────────
 
 def _inputs_de_fecha(driver, fecha):
     """(max_input, release_input) de la fila cuya ETIQUETA de fecha coincide. Se relee por

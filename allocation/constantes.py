@@ -1,6 +1,6 @@
-"""Reglas de negocio y constantes fijas, en un solo lugar (spec sección 4)."""
+"""Reglas de negocio y constantes fijas, en un solo lugar."""
 
-# ── Reglas de negocio (sección 4) ───────────────────────────────────────────
+# ── Reglas de negocio ───────────────────────────────────────────────────────
 PRICE_CODES_MANUAL = {"TR", "ND", "EM"}   # el resto va en Closed
 EXCLUDED_OPTIONS = {"600HTL", "ROOMS"}    # nunca se cierran, ni con TODAS
 CLOSEABLE_SERVICE_TYPES = {"HT"}
@@ -14,7 +14,6 @@ SHEET_URL_DEFAULT = (
 )
 HOJA_ALLOCATIONS = "ALLOCATIONS"
 HOJA_COLA = "COLA"
-HOJA_HISTORIAL = "HISTORIAL"
 
 # ── Tourplan ────────────────────────────────────────────────────────────────
 # Test y Producción son base paths distintos (no un dominio compartido).
@@ -30,7 +29,7 @@ ESTADO_PENDIENTE = "PENDIENTE"
 ESTADO_EN_CURSO = "EN CURSO"
 ESTADO_OK = "OK"
 ESTADO_SALTEADO = "SALTEADO"
-ESTADO_NO_APLICA = "NO APLICA"   # fase que no corresponde al pedido (p. ej. ninguna allocation cierra tarifa)
+ESTADO_NO_APLICA = "NO APLICA"   # fase que no corresponde al pedido (allocation vacía, ninguna allocation cierra tarifa, fechas fuera de vigencia)
 ESTADO_ERROR = "ERROR"   # se escribe como "ERROR: detalle"
 
 # Valor de "Allocation(es)" en la cola para "todas las del hotel".
