@@ -57,3 +57,12 @@ def test_planear_sin_fila_y_resumen():
     assert [a.tipo for a in acc] == [p.CERRAR, p.YA_CERRADA, p.SIN_FILA]
     txt = p.resumen("ST", acc)
     assert "cerraría 1" in txt and "ya cerradas 1" in txt and "SIN FILA" in txt and "01/05/27" in txt
+
+
+def test_resumen_fecha_sin_fila_posterior_a_vigencia_es_fuera_de_vigencia():
+    from datetime import date
+    F = date(2027, 3, 23)
+    acc = [p.Accion(F, p.SIN_FILA)] if hasattr(p, "Accion") else None
+    assert acc is not None
+    txt = p.resumen("ST", acc, vigente_hasta=date(2027, 2, 28))
+    assert "fuera de la vigencia de la allocation (hasta 28/02/27) 1" in txt and "SIN FILA" not in txt

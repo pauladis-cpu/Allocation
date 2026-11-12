@@ -86,14 +86,20 @@ def _rangos_txt(fechas):
     return ", ".join(partes)
 
 
-def resumen(codigo_allocation, acciones, lectura=True):
-    """Texto de OBSERVACIONES para una allocation."""
+def resumen(codigo_allocation, acciones, lectura=True, vigente_hasta=None):
+    """Texto de OBSERVACIONES para una allocation. Las fechas sin fila posteriores a «Vigente hasta» se informan
+    como fuera de la vigencia de la allocation (no son un error)."""
     cerrar = [a.fecha for a in acciones if a.tipo == CERRAR]
     ya = [a.fecha for a in acciones if a.tipo == YA_CERRADA]
-    sin = [a.fecha for a in acciones if a.tipo == SIN_FILA]
+    sin_todas = [a.fecha for a in acciones if a.tipo == SIN_FILA]
+    fuera = [f for f in sin_todas if vigente_hasta and f > vigente_hasta]
+    sin = [f for f in sin_todas if f not in fuera]
     verbo = "cerraría" if lectura else "cerró"
     partes = [f"{codigo_allocation}: {verbo} {len(cerrar)}" + (f" ({_rangos_txt(cerrar)})" if cerrar else "")]
     partes.append(f"ya cerradas {len(ya)}" + (f" ({_rangos_txt(ya)})" if ya else ""))
     if sin:
         partes.append(f"SIN FILA en la allocation {len(sin)} ({_rangos_txt(sin)}): no se tocan")
+    if fuera:
+        partes.append(f"fuera de la vigencia de la allocation (hasta {vigente_hasta:%d/%m/%y}) {len(fuera)} "
+                      f"({_rangos_txt(fuera)}): no se tocan")
     return " · ".join(partes)

@@ -347,7 +347,7 @@ def fase_allotment(driver, codigo_hotel, elegidas, fechas, aplicar, hoy):
         reales += 1
         cerrar += sum(1 for x in acciones if x.tipo == plan.CERRAR)
         sin_fila += sum(1 for x in acciones if x.tipo == plan.SIN_FILA)
-        lineas.append(plan.resumen(a.codigo, acciones, lectura=not aplicar) + (f" ({obs})" if obs else ""))
+        lineas.append(plan.resumen(a.codigo, acciones, lectura=not aplicar, vigente_hasta=a.vigente_hasta) + (f" ({obs})" if obs else ""))
         log(f"    ✔ {lineas[-1]}")
         # Una fecha sin fila es un error (no se pudo cerrar), salvo las posteriores a «Vigente hasta»: ahí no se espera
         # fila. Una fecha que ya estaba cerrada NO es un error.
