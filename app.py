@@ -693,8 +693,12 @@ def render_revisar():
         ejecutar = st.button("Enviar y ejecutar", key="enviar_ejecutar", type="primary", use_container_width=True,
                              disabled=not lista or bloqueo_prod or _estado_ejecucion()["running"],
                              help=motivo or "Escribe el pedido y lo ejecuta ahora en esta PC.")
+        enviar_otro = st.button("Enviar a la cola y cargar otro del mismo hotel", key="enviar_otro",
+                                use_container_width=True, disabled=not nombre,
+                                help="Escribe este pedido en la cola y vuelve a elegir habitaciones y fechas "
+                                     "del mismo hotel, sin buscarlo de nuevo.")
 
-    if enviar or ejecutar:
+    if enviar or ejecutar or enviar_otro:
         try:
             valores = cola.armar_pedido(
                 codigo_hotel=hotel.codigo, allocations=cods, todas=todas, fechas=sel,
@@ -706,10 +710,20 @@ def render_revisar():
             return
         st.session_state["cola_ts"] = 0       # que el globito de «Cola» cuente el pedido recién enviado
         _resetear_pedido()
+        st.session_state.pop("cola_datos", None)
+        if enviar_otro:
+            # Mismo hotel: se conserva el hotel y el origen; habitaciones y fechas vuelven a elegirse.
+            st.session_state["origen"] = origen
+            st.session_state["chk_todas"] = False
+            for i in range(len(hotel.allocations)):
+                st.session_state[f"chk_{i}"] = False
+            st.session_state["aviso"] = (f"Pedido {valores[cola.C_ID]} enviado a la cola (fila {fila}). "
+                                         f"Podés cargar otro cierre de {hotel.nombre}.")
+            _ir_paso(2)
+            st.rerun()
         for k in ("hotel_clave", "hotel_sel"):
             st.session_state.pop(k, None)
         st.session_state["consulta"] = ""
-        st.session_state.pop("cola_datos", None)
         if ejecutar:
             st.session_state["_lanzar"] = valores[cola.C_ID]
             _set_vista("cola")
