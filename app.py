@@ -31,7 +31,7 @@ import streamlit.components.v1 as components
 from common.abort import ABORT_EXIT_CODE
 from allocation import cola, fechas as fch, registro
 from allocation.constantes import (
-    EXCLUDED_OPTIONS, HOJA_ALLOCATIONS, HOJA_COLA, MODO_APLICAR,
+    EXCLUDED_OPTIONS, HOJA_ALLOCATIONS, HOJA_COLA, HOJA_HABITACIONES, MODO_APLICAR,
     URLS_ENTORNO, URL_PRODUCCION,
 )
 from common import user_config
@@ -199,9 +199,16 @@ def _cargar_registro(forzar=False):
         try:
             with st.spinner("Leyendo el registro de allocations..."):
                 allocs, hoteles = registro.cargar_registro(_conectar(HOJA_ALLOCATIONS))
-            st.session_state["registro"] = {"allocs": allocs, "hoteles": hoteles, "error": None}
+            st.session_state["registro"] = {"allocs": allocs, "hoteles": hoteles, "error": None,
+                                            "habitaciones": [], "hab_error": None}
         except Exception as e:  # se muestra en pantalla, no se rompe la app
-            st.session_state["registro"] = {"allocs": [], "hoteles": [], "error": str(e)}
+            st.session_state["registro"] = {"allocs": [], "hoteles": [], "error": str(e),
+                                            "habitaciones": [], "hab_error": None}
+        else:
+            try:    # la pestaña HABITACIONES solo hace falta para «Tarifas a cerrar» = ELEGIR
+                st.session_state["registro"]["habitaciones"] = registro.cargar_habitaciones(_conectar(HOJA_HABITACIONES))
+            except Exception as e:
+                st.session_state["registro"]["hab_error"] = str(e)
     return st.session_state["registro"]
 
 
@@ -234,7 +241,7 @@ def _resetear_pedido():
     for k in ("sel_fechas", "texto_fechas", "_nuevo_texto", "cal_last", "origen",
               "avisos_texto", "alloc_elegidas"):
         st.session_state.pop(k, None)
-    for k in [k for k in st.session_state if k.startswith("chk_")]:
+    for k in [k for k in st.session_state if k.startswith("chk_") or k.startswith("hab_")]:
         del st.session_state[k]
 
 
@@ -277,6 +284,31 @@ def _por_definir(elegidas):
         or (a.tarifas.strip().upper() == "OTRO" and not a.habitaciones_a_cerrar.strip()))]
 
 
+def _usa_elegir(elegidas):
+    """Alguna allocation elegida cierra tarifa con «Tarifas a cerrar» = ELEGIR (las habitaciones se eligen al cargar)."""
+    return any(a.cierra_tarifa and a.tarifas.strip().upper() == "ELEGIR" for a in elegidas)
+
+
+def _habitaciones_catalogo(hotel):
+    """Habitaciones del hotel en la pestaña HABITACIONES."""
+    return registro.habitaciones_de(st.session_state.get("registro", {}).get("habitaciones", []), hotel.codigo)
+
+
+def _habitaciones_marcadas(hotel):
+    """Códigos de las habitaciones tildadas en el paso 2 (solo si se usa ELEGIR)."""
+    return [h.codigo for j, h in enumerate(_habitaciones_catalogo(hotel)) if st.session_state.get(f"hab_{j}")]
+
+
+def _on_hab_todas(n):
+    v = st.session_state["hab_todas"]
+    for j in range(n):
+        st.session_state[f"hab_{j}"] = v
+
+
+def _on_hab(n):
+    st.session_state["hab_todas"] = all(st.session_state.get(f"hab_{j}") for j in range(n))
+
+
 def _habitacion_txt(a):
     return a.desc_habitacion or a.habitacion or a.codigo
 
@@ -284,6 +316,8 @@ def _habitacion_txt(a):
 def _tarifa_txt(a):
     if not a.cierra_tarifa:
         return "no cierra"
+    if a.tarifas.strip().upper() == "ELEGIR":
+        return "ELEGIR (se eligen al cargar el pedido)"
     if a.tarifas.strip().upper() == "OTRO":
         return f"OTRO ({a.habitaciones_a_cerrar.strip() or 'sin habitaciones'})"
     return a.tarifas or "—"
@@ -569,18 +603,40 @@ def render_fechas():
             st.error("No se puede continuar: " + ", ".join(a.codigo for a in por_definir)
                      + " cierra tarifa pero falta definir qué habitaciones («Tarifas a cerrar» vacío, u OTRO sin «Habitaciones a cerrar»). "
                      "Completá el registro y recargá.")
+        habs_ok = True
+        if _usa_elegir(elegidas):
+            catalogo = _habitaciones_catalogo(hotel)
+            with card("habs_elegir"):
+                st.markdown("**Habitaciones para tarifas**")
+                if not catalogo:
+                    habs_ok = False
+                    err = st.session_state.get("registro", {}).get("hab_error")
+                    st.error("No hay habitaciones de este hotel en la pestaña HABITACIONES"
+                             + (f" ({err})" if err else "") + ". Cargalas (Código hotel, Habitación (código), Nombre) y recargá.")
+                else:
+                    n_h = len(catalogo)
+                    st.session_state.setdefault("hab_todas", True)
+                    for j in range(n_h):
+                        st.session_state.setdefault(f"hab_{j}", True)
+                    st.checkbox(f"**Todas ({n_h})**", key="hab_todas", on_change=_on_hab_todas, args=(n_h,))
+                    for j, h in enumerate(catalogo):
+                        st.checkbox(f"{h.nombre or h.codigo}  ·  {h.codigo}" if h.nombre else h.codigo, key=f"hab_{j}",
+                                    on_change=_on_hab, args=(n_h,))
+                    habs_ok = bool(_habitaciones_marcadas(hotel))
+                    if not habs_ok:
+                        st.markdown('<div class="ayuda">Elegí al menos una habitación.</div>', unsafe_allow_html=True)
         with card("origen"):
             st.markdown("**Origen (opcional)**")
             st.text_input("Origen", key="origen", placeholder="Asunto o remitente del mail",
                           label_visibility="collapsed")
             st.markdown('<div class="ayuda">Queda en la cola para poder volver al mail.</div>',
                         unsafe_allow_html=True)
-        puede = bool(sel) and bool(elegidas) and not por_definir
+        puede = bool(sel) and bool(elegidas) and not por_definir and habs_ok
         c_vol, c_cont = st.columns(2)
         c_vol.button("Volver", key="vol_1", use_container_width=True, on_click=_ir_paso, args=(1,))
         c_cont.button("Continuar", key="cont_3", type="primary", use_container_width=True,
                       disabled=not puede, on_click=_ir_paso, args=(3,))
-        if not puede and not por_definir:
+        if not puede and not por_definir and habs_ok:
             st.markdown('<div class="ayuda">Elegí al menos una fecha y una habitación para continuar.</div>',
                         unsafe_allow_html=True)
 
@@ -612,6 +668,8 @@ def _paso_tarifa_html(elegidas):
             alcance.append("la habitación linkeada de cada allocation")
         elif t == "TODAS":
             alcance.append("todas las habitaciones HT del hotel, excepto " + " y ".join(sorted(EXCLUDED_OPTIONS)))
+        elif t == "ELEGIR":
+            alcance.append("las habitaciones elegidas para este pedido")
         else:
             alcance.append("las habitaciones " + (a.habitaciones_a_cerrar if t == "OTRO" else a.tarifas))
     unicos = list(dict.fromkeys(alcance))
@@ -637,6 +695,12 @@ def render_revisar():
     nombre = cfg["nombre"] or cfg["tp_usuario"]
     origen = st.session_state.get("origen", "")
     rangos = fch.agrupar_rangos(sel)
+    habs_elegidas = _habitaciones_marcadas(hotel) if _usa_elegir(elegidas) else []
+    if _usa_elegir(elegidas) and not habs_elegidas:
+        _ir_paso(2)
+        st.rerun()
+    nombres_hab = {h.codigo: h.nombre for h in _habitaciones_catalogo(hotel)}
+    habs_tarifa_txt = ", ".join(f"{nombres_hab.get(c) or c} ({c})" if nombres_hab.get(c) else c for c in habs_elegidas)
 
     col_izq, col_der = st.columns([2.4, 1], gap="large")
     with col_izq:
@@ -651,6 +715,7 @@ def render_revisar():
                 '<div class="resumen">'
                 f'<div class="k">Hotel</div><div><b>{esc(hotel.nombre)}</b> <span class="mono ayuda">{esc(hotel.codigo)}</span></div>'
                 f'<div class="k">Habitaciones</div><div>{esc(habs)}</div>'
+                + (f'<div class="k">Tarifas en</div><div>{esc(habs_tarifa_txt)}</div>' if habs_tarifa_txt else "") +
                 f'<div class="k">Fechas a cerrar</div><div>{chips}<span class="ayuda">{len(rangos)} '
                 f'rango{"s" if len(rangos) != 1 else ""} · {len(sel)} fecha{"s" if len(sel) != 1 else ""}</span></div>'
                 f'<div class="k">Origen</div><div>{esc(origen) if origen else "<span class=ayuda>—</span>"}</div>'
@@ -702,7 +767,7 @@ def render_revisar():
         try:
             valores = cola.armar_pedido(
                 codigo_hotel=hotel.codigo, allocations=cods, todas=todas, fechas=sel,
-                cargado_por=nombre, modo=MODO_APLICAR, origen=origen)
+                cargado_por=nombre, modo=MODO_APLICAR, origen=origen, habitaciones=habs_elegidas)
             with st.spinner("Escribiendo en la cola..."):
                 fila = cola.enviar_pedido(_conectar(HOJA_COLA), valores)
         except Exception as e:
@@ -717,6 +782,9 @@ def render_revisar():
             st.session_state["chk_todas"] = False
             for i in range(len(hotel.allocations)):
                 st.session_state[f"chk_{i}"] = False
+            st.session_state["hab_todas"] = False
+            for j in range(len(_habitaciones_catalogo(hotel))):
+                st.session_state[f"hab_{j}"] = False
             st.session_state["aviso"] = (f"Pedido {valores[cola.C_ID]} enviado a la cola (fila {fila}). "
                                          f"Podés cargar otro cierre de {hotel.nombre}.")
             _ir_paso(2)
@@ -755,6 +823,10 @@ def _habitaciones_cola(p):
     if not del_hotel:
         return p["allocations"], []
     elegidas, faltan = registro.resolver_allocations(p["allocations"], del_hotel)
+    if p.get("habitaciones"):      # pedido con habitaciones elegidas (ELEGIR): se muestran por nombre
+        nombres = {h.codigo: h.nombre for h in st.session_state.get("registro", {}).get("habitaciones", [])}
+        cods = [c.strip().upper() for c in p["habitaciones"].replace(";", ",").split(",") if c.strip()]
+        return ", ".join(nombres.get(c) or c for c in cods), elegidas
     if registro.normalizar(p["allocations"]) == "todas":
         # en vez de «Todas (N)»: el código (product code) de la habitación de cada allocation; sin habitación, la allocation
         return ", ".join(_codigos_habitaciones(elegidas)), elegidas
@@ -1107,7 +1179,7 @@ def main():
     st.session_state.setdefault("paso", 1)
     # mantiene vivo el estado de los widgets que no se dibujan en el paso actual
     for k in list(st.session_state):
-        if k in _CLAVES_PERSISTENTES or k.startswith("chk_"):
+        if k in _CLAVES_PERSISTENTES or k.startswith("chk_") or k.startswith("hab_"):
             st.session_state[k] = st.session_state[k]
     render_topbar()
     with st.container(key="page"):

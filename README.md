@@ -97,7 +97,7 @@ La configuración vive en `~/.tourplan-allocation/` (fuera del repo, nunca se su
 ## El Google Sheet
 
 Pestañas `ALLOCATIONS` (solo lectura para la app), `COLA` (la app escribe) 
-`HISTORIAL` (la app todavía no la usa). **Las columnas se ubican por el nombre del encabezado**, no por la
+`HISTORIAL` (la app todavía no la usa) y, opcional, `HABITACIONES`. **Las columnas se ubican por el nombre del encabezado**, no por la
 letra; si falta una columna obligatoria la app lo informa y no modifica el Sheet.
 
 **«Tarifas a cerrar»** (hoja ALLOCATIONS) admite:
@@ -106,7 +106,16 @@ letra; si falta una columna obligatoria la app lo informa y no modifica el Sheet
 |---|---|
 | `LINKEADA` | solo la habitación linkeada a la allocation |
 | `TODAS` | todas las habitaciones HT del hotel, excepto `600HTL` y `ROOMS` (se lee de Tourplan) |
+| `ELEGIR` | las habitaciones que se tildan **al cargar cada pedido** (paso 2), por nombre, desde la pestaña `HABITACIONES` |
 | `OTRO` | las habitaciones que figuren en la columna **«Habitaciones a cerrar»** |
+
+**`ELEGIR` y la pestaña `HABITACIONES`** (para hoteles que a veces cierran todas las habitaciones y a veces solo algunas):
+`HABITACIONES` se carga a mano, con las columnas `Código hotel`, `Habitación (código)` (código largo) y `Nombre`; una fila
+por habitación del hotel. En la allocation del hotel se pone `Tarifas a cerrar` = `ELEGIR`. En el paso 2 la app muestra la
+lista por nombre, con «Todas» y una casilla por habitación (vienen todas tildadas); lo elegido se guarda en la columna
+**opcional «Habitaciones a cerrar» de la hoja COLA** (agregala al final de COLA; sin ella la app no deja enviar un pedido ELEGIR)
+y el runner cierra solo esas, igual que con `OTRO`. Con el botón «Enviar a la cola y cargar otro del mismo hotel» se
+cargan varias combinaciones sin volver a buscar el hotel.
 
 **«Habitaciones a cerrar»** (columna opcional, la ubicás donde quieras, por ejemplo entre «Tarifas a cerrar» y
 «Vigente hasta») solo se completa con `OTRO`: códigos largos (`location + HT + código de hotel + opción`, ej.

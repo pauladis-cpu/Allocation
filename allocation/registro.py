@@ -50,7 +50,7 @@ class AllocationReg:
     habitacion: str            # código largo; "" = allocation vacía
     desc_habitacion: str
     cierra_tarifa: bool
-    tarifas: str               # LINKEADA | TODAS | OTRO
+    tarifas: str               # LINKEADA | TODAS | ELEGIR | OTRO
     vigente_hasta: object      # date | None
     vigente_hasta_txt: str
     notas: str
@@ -64,6 +64,17 @@ class AllocationReg:
     @property
     def id(self):
         return (self.codigo_hotel, self.codigo)
+
+
+# Pestaña HABITACIONES (carga manual): una fila por habitación que se puede elegir al cargar un pedido.
+ENCABEZADOS_HAB = {"codigo_hotel": "Código hotel", "codigo": "Habitación (código)", "nombre": "Nombre"}
+
+
+@dataclass
+class HabitacionReg:
+    codigo_hotel: str
+    codigo: str                # código largo (location + HT + código de hotel + opción)
+    nombre: str
 
 
 @dataclass
@@ -191,3 +202,30 @@ def resolver_allocations(texto_cola, hotel_allocs):
         a = por_codigo.get(normalizar(cod))
         (encontradas if a else faltantes).append(a or cod)
     return encontradas, faltantes
+
+
+def cargar_habitaciones(ws):
+    """Lee la pestaña HABITACIONES ya conectada (ws) -> lista de HabitacionReg."""
+    from common.sheets_client import cargar_sheet
+    filas, columnas = cargar_sheet(ws)
+    if not columnas:
+        raise RegistroInvalido("La hoja HABITACIONES está vacía.")
+    por_nombre = {normalizar(c): c for c in columnas if c}
+    mapa = {k: por_nombre.get(normalizar(v)) for k, v in ENCABEZADOS_HAB.items()}
+    faltan = [ENCABEZADOS_HAB[k] for k, c in mapa.items() if c is None]
+    if faltan:
+        raise RegistroInvalido(f"Faltan columnas en la hoja HABITACIONES: {faltan}. "
+                               f"Columnas detectadas: {[c for c in columnas if c]}")
+    out = []
+    for f in filas:
+        h = HabitacionReg(*(str(f.get(mapa[k], "")).strip().replace("\u00a0", " ")
+                            for k in ("codigo_hotel", "codigo", "nombre")))
+        h.codigo = h.codigo.replace(" ", "").upper()
+        if h.codigo_hotel and h.codigo:
+            out.append(h)
+    return out
+
+
+def habitaciones_de(habitaciones, codigo_hotel):
+    """Habitaciones del catálogo que corresponden a un hotel."""
+    return [h for h in habitaciones if h.codigo_hotel.upper() == (codigo_hotel or "").strip().upper()]

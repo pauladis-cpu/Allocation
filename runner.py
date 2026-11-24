@@ -29,6 +29,7 @@ Login: si Tourplan no tiene licencias libres («Maximum Users Exceeded») se cie
 LICENCIAS_ESPERA_MIN minutos y se reintenta, hasta LICENCIAS_MAX_INTENTOS intentos. Si se agotan, no se procesa nada
 (los pedidos siguen PENDIENTE) y sale con LICENCIAS_EXIT_CODE.
 """
+import dataclasses
 import json
 import os
 import re
@@ -295,6 +296,15 @@ def resolver_pedido(fila, allocs_registro, hoy):
         todas = de_texto_normalizado(fila.get(cola.C_FECHAS))
     except ValueError as e:
         raise PedidoError(f"fechas ilegibles: {e}")
+    elegir = [a for a in elegidas if a.cierra_tarifa and a.tarifas.strip().upper() == "ELEGIR"]
+    if elegir:
+        habs_pedido = (fila.get(cola.C_HABS) or "").strip()
+        if not codigos_de(habs_pedido):
+            raise PedidoError(f"{', '.join(a.codigo for a in elegir)}: «Tarifas a cerrar» = ELEGIR pero el pedido no trae "
+                              f"habitaciones (columna «{cola.C_HABS}» de la COLA).")
+        # ELEGIR se trata como OTRO con las habitaciones que se eligieron al cargar el pedido
+        elegidas = [dataclasses.replace(a, tarifas="OTRO", habitaciones_a_cerrar=habs_pedido) if a in elegir else a
+                    for a in elegidas]
     fechas = [f for f in todas if f >= hoy]
     avisos = []
     if len(fechas) < len(todas):

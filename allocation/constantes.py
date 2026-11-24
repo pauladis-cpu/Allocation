@@ -14,6 +14,7 @@ SHEET_URL_DEFAULT = (
 )
 HOJA_ALLOCATIONS = "ALLOCATIONS"
 HOJA_COLA = "COLA"
+HOJA_HABITACIONES = "HABITACIONES"   # catálogo manual de habitaciones por hotel (para «Tarifas a cerrar» = ELEGIR)
 
 # ── Tourplan ────────────────────────────────────────────────────────────────
 # Test y Producción son base paths distintos (no un dominio compartido).

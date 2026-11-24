@@ -248,3 +248,58 @@ def test_fase_tarifa_hg_sin_fechas_en_vigencia_es_no_aplica(monkeypatch):
     estado, obs = runner.fase_tarifa(None, "HOT", [], ["2027-01-01"], True)
     assert estado == _cola.ESTADO_NO_APLICA
     assert "allocation HG" in obs
+
+
+# ── Tarifas a cerrar = ELEGIR + pestaña HABITACIONES ─────────────────────
+
+def test_cargar_habitaciones_y_filtrar_por_hotel(monkeypatch):
+    import common.sheets_client as sc
+    cols = ["Código hotel", "Habitación (código)", "Nombre"]
+    filas = [{"Código hotel": "1NHF01", "Habitación (código)": "bueht1nhf01st", "Nombre": "Standard"},
+             {"Código hotel": "1NHF01", "Habitación (código)": "BUEHT1NHF01SU", "Nombre": "Superior"},
+             {"Código hotel": "OTRO1", "Habitación (código)": "BUEHT0TRO1ST", "Nombre": "x"},
+             {"Código hotel": "", "Habitación (código)": "", "Nombre": ""}]
+    monkeypatch.setattr(sc, "cargar_sheet", lambda ws: (filas, cols))
+    habs = registro.cargar_habitaciones(object())
+    assert len(habs) == 3
+    del_hotel = registro.habitaciones_de(habs, "1nhf01")
+    assert [h.codigo for h in del_hotel] == ["BUEHT1NHF01ST", "BUEHT1NHF01SU"] and del_hotel[0].nombre == "Standard"
+    monkeypatch.setattr(sc, "cargar_sheet", lambda ws: (filas, ["Código hotel", "Nombre"]))
+    with pytest.raises(registro.RegistroInvalido):
+        registro.cargar_habitaciones(object())
+
+
+def test_pedido_con_habitaciones_elegidas():
+    from datetime import date
+    v = cola.armar_pedido(codigo_hotel="1NHF01", allocations=[], todas=True, fechas=[date(2026, 10, 8)],
+                          cargado_por="Ana", habitaciones=["BUEHT1NHF01ST", " BUEHT1NHF01SU "])
+    assert v[cola.C_HABS] == "BUEHT1NHF01ST, BUEHT1NHF01SU"
+    v2 = cola.armar_pedido(codigo_hotel="1NHF01", allocations=[], todas=True, fechas=[date(2026, 10, 8)], cargado_por="Ana")
+    assert cola.C_HABS not in v2
+
+
+def test_enviar_pedido_con_habitaciones_exige_la_columna():
+    from datetime import date
+    v = cola.armar_pedido(codigo_hotel="1NHF01", allocations=[], todas=True, fechas=[date(2026, 10, 8)],
+                          cargado_por="Ana", habitaciones=["BUEHT1NHF01ST"])
+    ws = FakeWS(cola.COLUMNAS_COLA)
+    with pytest.raises(cola.ColaInvalida, match="Habitaciones a cerrar"):
+        cola.enviar_pedido(ws, v)
+    assert len(ws.filas) == 1                       # no escribió nada
+    ws2 = FakeWS(cola.COLUMNAS_COLA + [cola.C_HABS])
+    fila_n = cola.enviar_pedido(ws2, v)
+    assert ws2.filas[fila_n - 1][-1] == "BUEHT1NHF01ST"
+
+
+def test_resolver_pedido_elegir_se_trata_como_otro_con_las_habitaciones_del_pedido():
+    import runner
+    from datetime import date
+    filas = [fila(2, "1NHF01", "NH F", "ST", "Standard", "BUEHT1NHF01ST", "", "SI", "ELEGIR", "", "")]
+    allocs = registro.construir_allocations(filas, COLS)
+    pedido = {cola.C_HOTEL_COD: "1NHF01", cola.C_ALLOCS: "TODAS", cola.C_FECHAS: "2030-01-10",
+              cola.C_HABS: "BUEHT1NHF01SU, BUEHT1NHF01DB"}
+    _, elegidas, _, _ = runner.resolver_pedido(pedido, allocs, date(2026, 10, 5))
+    assert elegidas[0].tarifas == "OTRO"
+    assert runner.codigos_de(elegidas[0].habitaciones_a_cerrar) == ["BUEHT1NHF01SU", "BUEHT1NHF01DB"]
+    with pytest.raises(runner.PedidoError, match="no trae habitaciones"):
+        runner.resolver_pedido({**pedido, cola.C_HABS: ""}, allocs, date(2026, 10, 5))

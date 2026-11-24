@@ -35,6 +35,7 @@ C_EST_TARIFA = "ESTADO_CIERRE_TARIFA"
 C_OBS_TARIFA = "OBSERVACIONES_CIERRE_TARIFA"
 C_TOMADO_POR = "TOMADO_POR"
 C_TOMADO_EN = "TOMADO_EN"
+C_HABS = "Habitaciones a cerrar"   # opcional: habitaciones elegidas en el pedido (allocations con «Tarifas a cerrar» = ELEGIR)
 
 COLUMNAS_COLA = [
     C_ID, C_FECHA_CARGA, C_CARGADO_POR, C_HOTEL_COD, C_ALLOCS, C_FECHAS, C_CANT,
@@ -60,11 +61,12 @@ def nuevo_id(ahora=None):
 
 
 def armar_pedido(*, codigo_hotel, allocations, todas, fechas, cargado_por,
-                 modo=MODO_LECTURA, origen="", ahora=None):
+                 modo=MODO_LECTURA, origen="", ahora=None, habitaciones=()):
     """Valores (por nombre de columna) de un pedido nuevo.
 
     allocations: códigos de allocation elegidos. todas=True -> "TODAS"
     (se carga una sola vez, todas las allocations del hotel en el registro).
+    habitaciones: códigos largos elegidos para las allocations con «Tarifas a cerrar» = ELEGIR.
     """
     if not (codigo_hotel or "").strip():
         raise PedidoInvalido("El hotel no tiene código de supplier: no se puede procesar.")
@@ -86,7 +88,9 @@ def armar_pedido(*, codigo_hotel, allocations, todas, fechas, cargado_por,
             raise PedidoInvalido(f"Hay una allocation llamada {ALLOCATIONS_TODAS!r}: ambigua con 'Todas'.")
         alloc_txt = f"{SEPARADOR_ALLOCATIONS} ".join(codigos)
     ahora = ahora or datetime.now()
+    habs_txt = ", ".join(h.strip() for h in habitaciones if h and h.strip())
     return {
+        **({C_HABS: habs_txt} if habs_txt else {}),
         C_ID: nuevo_id(ahora),
         C_FECHA_CARGA: ahora.strftime(FORMATO_FECHA_HORA),
         C_CARGADO_POR: cargado_por,
@@ -116,6 +120,9 @@ def enviar_pedido(ws, valores, intentos=3):
     from common.sheets_client import actualizar_fila_sheet
     columnas = ws.row_values(1)
     verificar_columnas(columnas)
+    if valores.get(C_HABS) and C_HABS not in columnas:
+        raise ColaInvalida(f"Falta la columna «{C_HABS}» en la hoja COLA (hace falta para guardar las habitaciones "
+                           "elegidas). Agregala al final de la hoja y reintentá. No se escribió nada.")
     col_id = columnas.index(C_ID) + 1
     for _ in range(intentos):
         # primera fila libre según ID_PEDIDO
@@ -201,6 +208,7 @@ def leer_cola(ws, minutos_abandono=30, ahora=None):
             "hotel_codigo": f.get(C_HOTEL_COD, ""),
             "allocations": f.get(C_ALLOCS, ""),
             "fechas": f.get(C_FECHAS, ""),
+            "habitaciones": f.get(C_HABS, ""),
             "cant": f.get(C_CANT, "") or n_fechas,
             "modo": f.get(C_MODO, ""),
             "estado": estado_global(f),
@@ -277,6 +285,7 @@ _SUGERENCIAS = (
     ("no es service type ht", "Solo se cierran habitaciones HT: corregí el código en el registro.", True),
     ("está excluida", "Nunca se cierran 600HTL ni ROOMS: corregí el código en el registro.", True),
     ("no encontré la habitación", "Verificá que el código exista en el Product Find del hotel en Tourplan.", True),
+    ("no trae habitaciones", "Cargá de nuevo el pedido eligiendo las habitaciones (o completá la columna «Habitaciones a cerrar» de la COLA).", True),
     ("sin fila en la allocation", "Verificá en Tourplan que esas fechas existan en la allocation (Date To de la grilla de días) y, si falta la fila, crearla.", True),
     ("sin período en rates", "Verificá en Rates que un período cubra esas fechas; si no existe, crealo.", True),
     ("fechas ilegibles", "Revisá la columna de fechas del pedido.", True),
